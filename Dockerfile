@@ -11,9 +11,11 @@ RUN pwd
 RUN mkdir fileserver
 RUN ls
 COPY ./fileserver ./fileserver
-RUN cd fileserver; rm -rf node_modules; npm install
+WORKDIR fileserver
+RUN ls
+RUN rm -rf node_modules
+RUN npm install
 
 EXPOSE 8080
 
-CMD ['cd','fileserver']
-CMD ['nodejs','index.js']
+CMD ["nodejs","index.js"]
