@@ -25,7 +25,7 @@ app.get("/",function(req,res){
 
 app.post("/text",function(req,res){
   if(!fs.existsSync("/text/")){
-    fs.mkdir("/text/",function(err){
+    fs.mkdir("./text/",function(err){
       if(err){
         console.log("Error while creating directory")
         console.error(err)
@@ -33,7 +33,7 @@ app.post("/text",function(req,res){
       console.log("Directory created")
     })
   }
-  fs.appendFile("/text/cp.txt",getDataToAppend(req),function(err){
+  fs.appendFile("./text/cp.txt",getDataToAppend(req),function(err){
     if(err){
       console.log("Error while appending to file")
       console.error(err)
