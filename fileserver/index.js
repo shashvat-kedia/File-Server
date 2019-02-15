@@ -13,6 +13,12 @@ function getDataToAppend(req){
   return "[" + Math.round((new Date()).getTime())/1000 + "] - " + req.body.content 
 }
 
+function getDate(){
+  var today = new Date()
+  return today.getDay().toString().toUpperCase() + today.getMonth().toString().toUpperCase() + 
+          today.getFullYear().toString().toUppeCase()
+}
+
 app.use(express.static(__dirname + "/uploads"))
 
 app.use(bodyParser.urlencoded({extended: true}))
@@ -33,7 +39,7 @@ app.post("/text",function(req,res){
       console.log("Directory created")
     })
   }
-  fs.appendFile("./text/cp.txt",getDataToAppend(req),function(err){
+  fs.appendFile("./text/CP" + getDate() + "+.txt",getDataToAppend(req),function(err){
     if(err){
       console.log("Error while appending to file")
       console.error(err)
