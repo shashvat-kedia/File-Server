@@ -2,11 +2,16 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
 const app = express();
 
 const PORT = 8080 || process.env.PORT;
+
+function getDataToAppend(req){
+  return "[" + Math.round((new Date()).getTime())/1000 + "] - " + req.body.content 
+}
 
 app.use(express.static(__dirname + "/uploads"))
 
@@ -15,15 +20,29 @@ app.use(bodyParser.json())
 app.use(cors())
 
 app.get("/",function(req,res){
-  console.log("Hit home");
+  console.log("Hit home")
 })
 
 app.post("/text",function(req,res){
-  console.log("Hit on home")
-  res.json({
-    "status": 200,
-    "message": "Success"
-  })
+  if(!fs.existsSync("/text/")){
+    fs.mkdir("/text/",function(err){
+      if(err){
+        console.log("Error while creating directory")
+        console.error(err)
+      }
+      console.log("Directory created")
+    })
+  }
+  fs.appendFile("/text/cp.txt",getDataToAppend(req),function(err){
+    if(err){
+      console.log("Error while appending to file")
+      console.error(err)
+    }
+    console.log("Data saved to file")
+    res.status(200).send({
+      "message": "Data appended to file"
+    })
+  }) 
 })
 
 app.post("/upload",uploader.single("file_tag"),function(req,res){
