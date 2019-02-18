@@ -27,6 +27,9 @@ app.use(cors())
 
 app.get("/",function(req,res){
   console.log("Hit home")
+  res.status(200).send({
+    "message": "Hit"
+  })
 })
 
 app.post("/text",function(req,res){

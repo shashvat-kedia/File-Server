@@ -16,6 +16,20 @@ RUN ls
 RUN rm -rf node_modules
 RUN npm install
 
-EXPOSE 8080
+RUN ip show
+RUN ip addr show
+
+RUN systemcl start nginx
+RUN systemcl status nginx
+
+RUN ufw allow https comment 'Open all to access Nginx port 443'
+RUN ufw allow http comment 'Open access Nginx port 80'
+RUN ufw allow ssh comment 'Open access OpenSSH port 22'
+RUN ufw enable
+RUN ufw status
+
+RUN ping 
+
+EXPOSE 8080 80 443
 
 CMD ["nodejs","index.js"]
