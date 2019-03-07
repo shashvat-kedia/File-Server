@@ -25,6 +25,17 @@ app.use(bodyParser.urlencoded({extended: true}))
 app.use(bodyParser.json())
 app.use(cors())
 
+app.use("*",function(req,res,next){
+  if(req.body.api_key == 1111){
+    next()
+  }
+  else{
+    res.status(303).json({
+      "message": "Forbidden"
+    })
+  }
+})
+
 app.get("/",function(req,res){
   console.log("Hit home")
   res.status(200).send({
@@ -57,7 +68,7 @@ app.post("/text",function(req,res){
 app.post("/upload",uploader.single("file_tag"),function(req,res){
   const tempPath = req.file.path
   const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime())/1000 + ".png");
-  fc.rename(tempPath,destPath,function(err){
+  fs.rename(tempPath,destPath,function(err){
     if(err){
       console.error(err)
       res.status(500).send({
