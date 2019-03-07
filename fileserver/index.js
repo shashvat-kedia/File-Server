@@ -81,6 +81,12 @@ app.post("/upload",uploader.single("file_tag"),function(req,res){
   })
 })
 
+app.use("*",function(req,res){
+  res.status(404).json({
+    "message": "Endpoint does not exists"
+  })
+})
+
 app.listen(PORT,function(){
   console.log("Listening to port: " + PORT)
 })
