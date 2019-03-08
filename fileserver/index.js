@@ -38,7 +38,7 @@ app.use(bodyParser.json())
 app.use(cors())
 
 function connectToRMQ(){
-  amqp.connect(config.RMQ_URL,function(err,con){
+  amqp.connect("amqp://localhost",function(err,con){
     if(err){
       console.error("RMQ Error:- " + err.message)
       return setTimeout(connectToRMQ,1000)
