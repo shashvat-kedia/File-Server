@@ -5,7 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
+const S3 = require('aws-s3');
+const config = require('./config.js');
 const app = express();
+const S3Client = new S3(config.S3_CONFIG);
 
 const PORT = 8080 || process.env.PORT;
 
@@ -26,7 +29,7 @@ app.use(bodyParser.json())
 app.use(cors())
 
 app.use("*",function(req,res,next){
-  if(req.body.api_key == 1111){
+  if(req.body.api_key == config.API_KEY){
     next()
   }
   else{
