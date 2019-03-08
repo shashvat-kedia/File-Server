@@ -38,7 +38,7 @@ app.use(bodyParser.json())
 app.use(cors())
 
 function connectToRMQ(){
-  amqp.connect("amqp://localhost",function(err,con){
+  amqp.connect(config.RMQ_URL,function(err,con){
     if(err){
       console.error("RMQ Error:- " + err.message)
       return setTimeout(connectToRMQ,1000)
@@ -182,9 +182,7 @@ app.post("/text",function(req,res){
 })
 
 app.post("/upload",uploader.single("file"),function(req,res){
-  console.log(req)
   const tempPath = req.file.path
-  console.log(tempPath)
   const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime())/1000 + ".png");
   fs.rename(tempPath,destPath,function(err){
     if(err){
@@ -193,10 +191,10 @@ app.post("/upload",uploader.single("file"),function(req,res){
         "message": "Internal server error"
       })
     }
-    publish("","jobs",new Buffer(destPath))
     res.status(200).send({
       "message": "File upload successfull"
     })
+    publish("","jobs",new Buffer(destPath))
   })
 })
 
