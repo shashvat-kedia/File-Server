@@ -21,7 +21,7 @@ var offlinePubQueue = []
 
 const PORT = 8080 || process.env.PORT;
 
-function getDataToAppend(req){
+function getTimestampToAppendcd(req){
   return "[" + Math.round((new Date()).getTime())/1000 + "] - " + req.body.content 
 }
 
@@ -56,7 +56,7 @@ function connectToRMQ(){
     console.log("RMQ connected")
     rmq_connection = con
     startPublisher()
-    startWorker()
+    //startWorker()
   })
 }
 
@@ -125,7 +125,19 @@ function work(message,cb){
 }
 
 function publish(exchange, routingKey, content){
-  
+  try{
+    pub_channel.publish(exchange,routingKey,content,{persistent: true},function(err,ok){
+      if(err){
+        console.error("RMQ Error:- " + err.message)
+        offlinePubQueue.push([exchange,routingKey,content])
+        pub_channel.connection.close()
+      }
+    })
+  }
+  catch(exception){
+    console.error("Exception:- " + exception.message)
+    offlinePubQueue.push([exchange,routingKey,content])
+  }
 }
 
 app.use("*",function(req,res,next){
@@ -157,7 +169,7 @@ app.post("/text",function(req,res){
       console.log("Directory created")
     })
   }
-  fs.appendFile("./text/CP" + getDate() + "+.txt",getDataToAppend(req),function(err){
+  fs.appendFile("./text/CP" + getDate() + "+.txt",getTimestampToAppend(req),function(err){
     if(err){
       console.log("Error while appending to file")
       console.error(err)
@@ -181,6 +193,7 @@ app.post("/upload",uploader.single("file"),function(req,res){
         "message": "Internal server error"
       })
     }
+    publish("","jobs",new Buffer(destPath))
     res.status(200).send({
       "message": "File upload successfull"
     })
