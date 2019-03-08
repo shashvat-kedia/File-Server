@@ -7,12 +7,17 @@ const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
 const AWS = require('aws-sdk');
 const config = require('./config.js');
+const amqp = require('amqplib/callback_api');
 const app = express();
 
 AWS.config.update(config.AWS_CONFIG)
 
 const S3 = new AWS.S3()
 const s3_params = config.S3_CONFIG
+
+var rmq_connection = null
+var pub_channel = null
+var offlinePubQueue = []
 
 const PORT = 8080 || process.env.PORT;
 
@@ -32,8 +37,100 @@ app.use(bodyParser.urlencoded({extended: true}))
 app.use(bodyParser.json())
 app.use(cors())
 
+function connectToRMQ(){
+  amqp.connect(config.RMQ_URL,function(err,con){
+    if(err){
+      console.error("RMQ Error:- " + err.message)
+      return setTimeout(connectToRMQ,1000)
+    }
+    con.on("error",function(err){
+      if(err.message != "Connection closing"){
+        console.error("RMQ Error:- " + err.message)
+      }
+    })
+    con.on("close",function(err){
+      console.error("RMQ Error:- " + err.message)
+      console.info("Retrying...")
+      setTimeout(connectToRMQ,1000)
+    })
+    console.log("RMQ connected")
+    rmq_connection = con
+    startPublisher()
+    startWorker()
+  })
+}
+
+function startPublisher(){
+  rmq_connection.createConfirmChannel(function(err,ch){
+    if(err){
+      console.error("RMQ Error:- " + err.message)
+      return
+    }
+    ch.on("error",function(err){
+      console.error("RMQ Error:- " + err.message)
+    })
+    ch.on("close",function(err){
+      console.error("RMQ Error:- " + err.message)
+    })
+    pub_channel = ch
+    while(true){
+      var [exchange, routingKey, content] = offlinePubQueue.shift()
+      publish(exchange, routingKey, content)
+    }
+  })
+}
+
+function startWorker() {
+  rmq_connection.createChannel(function(err,ch){
+    if(err){
+      console.log("RMQ Error:- " + err.message)
+      return;
+    }
+    ch.on("error",function(err){
+      console.error("RMQ Error:- " + err.message)
+    })
+    ch.on("close",function(err){
+      console.error("RMQ Error:- " + err.message)
+    })
+    ch.prefetch(10)
+    ch.assertQueue("jobs",{durable: true},function(err,_ok){
+      if(err){
+        console.error("RMQ Error:- " + err.message)
+      }
+      ch.consume("jobs",processMessage,{noAck: false})
+      console.log("Worker is started")
+    })
+  })
+}
+
+function processMessage(message){
+  work(message,function(ok){
+    try{
+      if(ok){
+        ch.ack(message)
+      }
+      else{
+        ch.reject(message,true)
+      }
+    }
+    catch(err){
+      console.error("Message processing Error:- " + err.message)
+    }
+  })
+}
+
+function work(message,cb){
+  console.log("Message to be processed here")
+  cb(true)
+}
+
+function publish(exchange, routingKey, content){
+  
+}
+
 app.use("*",function(req,res,next){
   if(req.headers["authorization"] == config.API_KEY){
+    connectToRMQ()
     next()
   }
   else{
