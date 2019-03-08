@@ -5,10 +5,14 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
-const S3 = require('aws-s3');
+const AWS = require('aws-sdk');
 const config = require('./config.js');
 const app = express();
-const S3Client = new S3(config.S3_CONFIG);
+
+AWS.config.update(config.AWS_CONFIG)
+
+const S3 = new AWS.S3()
+const s3_params = config.S3_CONFIG
 
 const PORT = 8080 || process.env.PORT;
 
@@ -29,7 +33,7 @@ app.use(bodyParser.json())
 app.use(cors())
 
 app.use("*",function(req,res,next){
-  if(req.body.api_key == config.API_KEY){
+  if(req.headers["authorization"] == config.API_KEY){
     next()
   }
   else{
@@ -68,8 +72,10 @@ app.post("/text",function(req,res){
   }) 
 })
 
-app.post("/upload",uploader.single("file_tag"),function(req,res){
+app.post("/upload",uploader.single("file"),function(req,res){
+  console.log(req)
   const tempPath = req.file.path
+  console.log(tempPath)
   const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime())/1000 + ".png");
   fs.rename(tempPath,destPath,function(err){
     if(err){

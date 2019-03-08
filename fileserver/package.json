@@ -9,7 +9,7 @@
   "author": "Shashvat Kedia",
   "license": "MIT",
   "dependencies": {
-    "aws-s3": "^2.0.3",
+    "aws-sdk": "^2.417.0",
     "body-parser": "^1.18.3",
     "cors": "^2.8.5",
     "express": "^4.16.4",
