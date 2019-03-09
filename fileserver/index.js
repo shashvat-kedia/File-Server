@@ -17,6 +17,7 @@ const s3_params = config.S3_CONFIG
 
 var rmq_connection = null
 var pub_channel = null
+var con_channel = null
 var offlinePubQueue = []
 
 const PORT = 8080 || process.env.PORT;
@@ -56,7 +57,7 @@ function connectToRMQ(){
     console.log("RMQ connected")
     rmq_connection = con
     startPublisher()
-    //startWorker()
+    startConsumer();
   })
 }
 
@@ -70,79 +71,62 @@ function startPublisher(){
       console.error("RMQ Error:- " + err.message)
     })
     ch.on("close",function(err){
-      console.error("RMQ Error:- " + err.message)
+      console.error("RMQ Error:- " + err)
     })
+    ch.assertQueue("jobs", {durable: false})
     pub_channel = ch
-    while(true){
-      var [exchange, routingKey, content] = offlinePubQueue.shift()
-      publish(exchange, routingKey, content)
+    for(var i=0;i<offlinePubQueue.length;i++){
+      var content = offlinePubQueue[i]
+      publish(content)
     }
-  })
+    offlinePubQueue = []
+  })  
 }
 
-function startWorker() {
+function startConsumer(){
   rmq_connection.createChannel(function(err,ch){
     if(err){
-      console.log("RMQ Error:- " + err.message)
-      return;
+      console.error("RMQ Error:- " + err.message)
+      return
     }
     ch.on("error",function(err){
       console.error("RMQ Error:- " + err.message)
     })
     ch.on("close",function(err){
-      console.error("RMQ Error:- " + err.message)
+      console.error("RMQ Error:- " + err)
     })
-    ch.prefetch(10)
-    ch.assertQueue("jobs",{durable: true},function(err,_ok){
-      if(err){
-        console.error("RMQ Error:- " + err.message)
-      }
-      ch.consume("jobs",processMessage,{noAck: false})
-      console.log("Worker is started")
-    })
+    ch.assertQueue(config.RMQ_NAME, {durable: false})
+    con_channel = ch
   })
 }
 
-function processMessage(message){
-  work(message,function(ok){
-    try{
-      if(ok){
-        ch.ack(message)
-      }
-      else{
-        ch.reject(message,true)
-      }
-    }
-    catch(err){
-      console.error("Message processing Error:- " + err.message)
-    }
-  })
-}
-
-function work(message,cb){
-  console.log("Message to be processed here")
-  cb(true)
-}
-
-function publish(exchange, routingKey, content){
+function publish(content){
   try{
-    pub_channel.publish(exchange,routingKey,content,{persistent: true},function(err,ok){
-      if(err){
-        console.error("RMQ Error:- " + err.message)
-        offlinePubQueue.push([exchange,routingKey,content])
-        pub_channel.connection.close()
-      }
-    })
+    pub_channel.sendToQueue(config.RMQ_NAME,new Buffer(content))
+    console.log("Message publish to RMQ")
   }
   catch(exception){
-    console.error("Exception:- " + exception.message)
-    offlinePubQueue.push([exchange,routingKey,content])
+    console.error("Publisher Exception:- " + exception.message)
+    offlinePubQueue.push(content)
   }
 }
+
+function consume(){
+  try{
+    con_channel.consume(config.RMQ_NAME,function(message){
+      console.log(message.content.toString())
+    },{noAck: true})
+    setTimeout(consume,5000)
+  }
+  catch(exception){
+    console.error("Consumer Exception:- " + exception.message)
+  }
+}
+
+connectToRMQ()
 
 app.use("*",function(req,res,next){
   if(req.headers["authorization"] == config.API_KEY){
-    connectToRMQ()
     next()
   }
   else{
@@ -194,7 +178,8 @@ app.post("/upload",uploader.single("file"),function(req,res){
     res.status(200).send({
       "message": "File upload successfull"
     })
-    publish("","jobs",new Buffer(destPath))
+    publish(destPath)
+    consume()
   })
 })
 
