@@ -22,7 +22,13 @@ var offlinePubQueue = []
 
 const PORT = 8080 || process.env.PORT;
 
-function getTimestampToAppendcd(req){
+app.use(express.static(__dirname + "/uploads"))
+
+app.use(bodyParser.urlencoded({extended: true}))
+app.use(bodyParser.json())
+app.use(cors())
+
+function getTimestampToAppend(req){
   return "[" + Math.round((new Date()).getTime())/1000 + "] - " + req.body.content 
 }
 
@@ -31,12 +37,6 @@ function getDate(){
   return today.getDay().toString().toUpperCase() + today.getMonth().toString().toUpperCase() + 
           today.getFullYear().toString().toUppeCase()
 }
-
-app.use(express.static(__dirname + "/uploads"))
-
-app.use(bodyParser.urlencoded({extended: true}))
-app.use(bodyParser.json())
-app.use(cors())
 
 function connectToRMQ(){
   amqp.connect(config.RMQ_URL,function(err,con){
@@ -111,6 +111,9 @@ function publish(content){
   }
 }
 
+/*
+To be shifted to another service (Consumer service to process the data and upload it to AWS S3 in chunks)
+*/
 function consume(){
   try{
     con_channel.consume(config.RMQ_NAME,function(message){
@@ -178,8 +181,9 @@ app.post("/upload",uploader.single("file"),function(req,res){
     res.status(200).send({
       "message": "File upload successfull"
     })
-    publish(destPath)
-    consume()
+    if(pub_channel != null){
+      publish(destPath)
+    }
   })
 })
 
