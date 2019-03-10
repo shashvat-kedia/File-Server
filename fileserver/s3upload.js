@@ -4,7 +4,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const AWS = require('aws-sdk');
-const config = requrie('./config.js');
+const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const app = express()
 
@@ -16,11 +16,11 @@ const s3_params = config.S3_CONFIG
 var rmq_connection = null
 var con_channel = null
 
-app.use(bodyParser.urlextended({encoded: true}))
+app.use(bodyParser.urlencoded({extended: true}))
 app.use(bodyParser.json())
 app.use(cors())
 
-const PORT = 5000 | process.env.PORT
+const PORT = 27272 | process.env.PORT
 
 function connectToRMQ(){
   amqp.connect(config.RMQ_URL,function(err,con){
@@ -68,7 +68,6 @@ function consume(){
     con_channel.consume(config.RMQ_NAME,function(message){
       console.log(message.content.toString())
     },{noAck: true})
-    setTimeout(consume,5000)
   }
   catch(exception){
     console.error("Consumer Exception:- " + exception.message)
