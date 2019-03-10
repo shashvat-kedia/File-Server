@@ -6,6 +6,7 @@ const path = require('path');
 const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
+const hash = require('object-hash');
 const app = express()
 
 AWS.config.update(config.AWS_CONFIG)
@@ -83,7 +84,7 @@ function sendToS3(path) {
       throw err
     }
     function readNextChunk() {
-      fc.read(fd, buffer, 0, config.READ_CHUNKSIZE, null, function(err, nread) {
+      fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, null, function(err, nread) {
         if (err) {
           console.error("Read Chunk Error:- " + err)
           throw err
@@ -101,10 +102,12 @@ function sendToS3(path) {
         else {
           data = buffer
         }
+        console.log(hash(nread))
       })
     }
     readNextChunk()
   })
+  fs.unlinkSync(path)
 }
 
 app.listen(PORT, function() {
