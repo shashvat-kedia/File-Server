@@ -7,7 +7,6 @@ const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
-const rmqp = require('./rmqp.js');
 const app = express();
 
 var rmq_connection = null
@@ -32,13 +31,26 @@ function getDate(){
           today.getFullYear().toString().toUppeCase()
 }
 
-function getRMQPConnection(){
-  rmq_connection = rmqp.connectToRMQ()
-  if(rmq_connection != null){
+function connectToRMQ(){
+  amqp.connect(config.RMQ_URL,function(err,con){
+    if(err){
+      console.error("RMQ Error:- " + err.message)
+      return setTimeout(connectToRMQ, 1000)
+    }
+    con.on("error",function(err){
+      if(err.message != "Connection closing"){
+        console.error("RMQ Error:- " + err.message)
+      }
+    })
+    con.on("close",function(err){
+      console.error("RMQ Error:- " + err.message)
+      console.info("Retrying...")
+      return setTimeout(connectToRMQ(), 1000)
+    })
+    console.log("RMQ connected")
+    rmq_connection = con
     startPublisher()
-    return 1;
-  }
-  return 0;
+  })
 }
 
 function startPublisher(){
@@ -55,6 +67,7 @@ function startPublisher(){
     })
     ch.assertQueue("jobs", {durable: false})
     pub_channel = ch
+    console.log("Publisher started")
     for(var i=0;i<offlinePubQueue.length;i++){
       var content = offlinePubQueue[i]
       publish(content)
@@ -124,7 +137,8 @@ app.post("/upload",uploader.single("file"),function(req,res){
         "message": "Internal server error"
       })
     }
-    res.status(200).send({
+    res.statusCode = 200
+    res.send({
       "message": "File upload successfull"
     })
     if(pub_channel != null){
@@ -140,9 +154,6 @@ app.use("*",function(req,res){
 })
 
 app.listen(PORT,function(){
-  var flag = getRMQPConnection()
-  if(flag == 0){
-    setTimeout(getRMQPConnection, 1000)
-  }
+  connectToRMQ()
   console.log("Listening to port: " + PORT)
 })

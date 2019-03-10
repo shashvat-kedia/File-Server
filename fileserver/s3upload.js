@@ -5,8 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const AWS = require('aws-sdk');
 const config = requrie('./config.js');
-const amqp = require('amqp/callback_api');
-const rmqp = require('./rmqp.js');
+const amqp = require('amqplib/callback_api');
 const app = express()
 
 AWS.config.update(config.AWS_CONFIG)
@@ -17,11 +16,33 @@ const s3_params = config.S3_CONFIG
 var rmq_connection = null
 var con_channel = null
 
-app.use(bodyParser.urlextended({excoded: true}))
+app.use(bodyParser.urlextended({encoded: true}))
 app.use(bodyParser.json())
 app.use(cors())
 
 const PORT = 5000 | process.env.PORT
+
+function connectToRMQ(){
+  amqp.connect(config.RMQ_URL,function(err,con){
+    if(err){
+      console.error("RMQ Error:- " + err.message)
+      return setTimeout(connectToRMQ, 1000)
+    }
+    con.on("error",function(err){
+      if(err.message != "Connection closing"){
+        console.error("RMQ Error:- " + err.message)
+      }
+    })
+    con.on("close",function(err){
+      console.error("RMQ Error:- " + err.message)
+      console.info("Retrying...")
+      return setTimeout(connectToRMQ(), 1000)
+    })
+    console.log("RMQ connected")
+    rmq_connection = con
+    startConsumer()
+  })
+}
 
 function startConsumer(){
   rmq_connection.createChannel(function(err,ch){
@@ -37,6 +58,7 @@ function startConsumer(){
     })
     ch.assertQueue(config.RMQ_NAME, {durable: false})
     con_channel = ch
+    console.log("Consumer started")
     consume()
   })
 }
@@ -53,19 +75,7 @@ function consume(){
   }
 }
 
-function getRMQPConnection(){
-  rmq_connection = rmqp.connectToRMQ()
-  if(rmq_connection != null){
-    startConsumer()
-    return 1;
-  }
-  return 0;
-}
-
 app.listen(PORT,function(){
-  var flag = getRMQPConnection();
-  if(flag == 0){
-    setTimeout(getRMQPConnection(),1000)
-  }
+  connectToRMQ()
   console.log("Consumer service listening on :- " + PORT)
 })
