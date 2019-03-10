@@ -5,19 +5,13 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const uploader = multer({dest: '/uploads'});
-const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
+const rmqp = require('./rmqp.js');
 const app = express();
-
-AWS.config.update(config.AWS_CONFIG)
-
-const S3 = new AWS.S3()
-const s3_params = config.S3_CONFIG
 
 var rmq_connection = null
 var pub_channel = null
-var con_channel = null
 var offlinePubQueue = []
 
 const PORT = 8080 || process.env.PORT;
@@ -38,27 +32,13 @@ function getDate(){
           today.getFullYear().toString().toUppeCase()
 }
 
-function connectToRMQ(){
-  amqp.connect(config.RMQ_URL,function(err,con){
-    if(err){
-      console.error("RMQ Error:- " + err.message)
-      return setTimeout(connectToRMQ,1000)
-    }
-    con.on("error",function(err){
-      if(err.message != "Connection closing"){
-        console.error("RMQ Error:- " + err.message)
-      }
-    })
-    con.on("close",function(err){
-      console.error("RMQ Error:- " + err.message)
-      console.info("Retrying...")
-      setTimeout(connectToRMQ,1000)
-    })
-    console.log("RMQ connected")
-    rmq_connection = con
+function getRMQPConnection(){
+  rmq_connection = rmqp.connectToRMQ()
+  if(rmq_connection != null){
     startPublisher()
-    startConsumer();
-  })
+    return 1;
+  }
+  return 0;
 }
 
 function startPublisher(){
@@ -83,23 +63,6 @@ function startPublisher(){
   })  
 }
 
-function startConsumer(){
-  rmq_connection.createChannel(function(err,ch){
-    if(err){
-      console.error("RMQ Error:- " + err.message)
-      return
-    }
-    ch.on("error",function(err){
-      console.error("RMQ Error:- " + err.message)
-    })
-    ch.on("close",function(err){
-      console.error("RMQ Error:- " + err)
-    })
-    ch.assertQueue(config.RMQ_NAME, {durable: false})
-    con_channel = ch
-  })
-}
-
 function publish(content){
   try{
     pub_channel.sendToQueue(config.RMQ_NAME,new Buffer(content))
@@ -110,23 +73,6 @@ function publish(content){
     offlinePubQueue.push(content)
   }
 }
-
-/*
-To be shifted to another service (Consumer service to process the data and upload it to AWS S3 in chunks)
-*/
-function consume(){
-  try{
-    con_channel.consume(config.RMQ_NAME,function(message){
-      console.log(message.content.toString())
-    },{noAck: true})
-    setTimeout(consume,5000)
-  }
-  catch(exception){
-    console.error("Consumer Exception:- " + exception.message)
-  }
-}
-
-connectToRMQ()
 
 app.use("*",function(req,res,next){
   if(req.headers["authorization"] == config.API_KEY){
@@ -194,5 +140,9 @@ app.use("*",function(req,res){
 })
 
 app.listen(PORT,function(){
+  var flag = getRMQPConnection()
+  if(flag == 0){
+    setTimeout(getRMQPConnection, 1000)
+  }
   console.log("Listening to port: " + PORT)
 })
