@@ -40,6 +40,7 @@ function connectToRMQ() {
     con.on("error", function(err) {
       if (err.message != "Connection closing") {
         console.error("RMQ Error:- " + err.message)
+        throw err
       }
     })
     con.on("close", function(err) {
@@ -61,9 +62,11 @@ function startPublisher() {
     }
     ch.on("error", function(err) {
       console.error("RMQ Error:- " + err.message)
+      return
     })
     ch.on("close", function(err) {
       console.error("RMQ Error:- " + err)
+      return
     })
     ch.assertQueue("jobs", { durable: false })
     pub_channel = ch

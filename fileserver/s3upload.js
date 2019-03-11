@@ -32,6 +32,7 @@ function connectToRMQ() {
     con.on("error", function(err) {
       if (err.message != "Connection closing") {
         console.error("RMQ Error:- " + err.message)
+        throw error
       }
     })
     con.on("close", function(err) {
@@ -53,9 +54,11 @@ function startConsumer() {
     }
     ch.on("error", function(err) {
       console.error("RMQ Error:- " + err.message)
+      return
     })
     ch.on("close", function(err) {
       console.error("RMQ Error:- " + err)
+      return
     })
     ch.assertQueue(config.RMQ_NAME, { durable: false })
     con_channel = ch
