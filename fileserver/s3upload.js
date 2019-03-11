@@ -78,34 +78,9 @@ function consume() {
 
 function sendToS3(path) {
   var buffer = new Buffer(config.READ_CHUNKSIZE)
-  fs.open(path, 'r', function(err, fd) {
-    if (err) {
-      console.error("File Read Error:- " + err)
-      throw err
-    }
-    function readNextChunk() {
-      fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, null, function(err, nread) {
-        if (err) {
-          console.error("Read Chunk Error:- " + err)
-          throw err
-        }
-        if (nread == 0) {
-          fs.close(nread, function(err) {
-            console.error("Read Stream Error:- " + err)
-            throw err
-          })
-        }
-        var data
-        if (nread < config.READ_CHUNKSIZE) {
-          data = buffer.slice(0, nread)
-        }
-        else {
-          data = buffer
-        }
-        console.log(hash(nread))
-      })
-    }
-    readNextChunk()
+  var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
+  readStream.on('data', function(chunk) {
+    console.log(hash(chunk))
   })
   fs.unlinkSync(path)
 }
