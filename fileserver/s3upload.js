@@ -1,3 +1,6 @@
+//Move from HTTP to socket based connection ass socket based connections provide faster data communications and are 
+//also efficient for exchange of streams of data (usually large files that can be streamed to the clients)
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -7,6 +10,7 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
+const io = require('socket.io')(app);
 const app = express()
 
 AWS.config.update(config.AWS_CONFIG)
@@ -98,7 +102,6 @@ function uploadToS3(s3_params) {
 }
 
 function sendToS3(path) {
-  var buffer = new Buffer(config.READ_CHUNKSIZE)
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
   var file_path = "/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {

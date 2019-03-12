@@ -82,7 +82,7 @@ function startPublisher() {
 function publish(content) {
   try {
     pub_channel.sendToQueue(config.RMQ_NAME, new Buffer(content))
-    console.log("Message publish to RMQ")
+    console.log("Message published to RMQ")
   }
   catch (exception) {
     console.error("Publisher Exception:- " + exception.message)
