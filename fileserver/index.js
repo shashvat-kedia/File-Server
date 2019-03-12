@@ -152,7 +152,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 
 app.use("*", function(req, res) {
   res.status(404).json({
-    "message": "Endpoint does not exists"
+    "message": "Endpoint does not exist"
   })
 })
 

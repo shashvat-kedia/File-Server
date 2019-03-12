@@ -83,6 +83,25 @@ function sendToS3(path) {
   var buffer = new Buffer(config.READ_CHUNKSIZE)
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
   readStream.on('data', function(chunk) {
+    var chunk_hash = hash(chunk)
+    s3_params["Body"] = fc.createReadStream(chunk)
+    s3_params["Key"] = "/chunks/" + chunk_hash + ".txt"
+    s3.upload(s3_params, function(err, data) {
+      if (err) {
+        console.error("S3 Upload Error:- " + err)
+        throw err
+      }
+      if (data) {
+        console.log("File chunk successfully uploaded to AWS S3:- " + data.location)
+        fs.appendFile("/uploads/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')),
+          chunk_hash, function(err) {
+            if (err) {
+              console.error("File Write Error:- " + err)
+              throw err
+            }
+          })
+      }
+    })
     console.log(hash(chunk))
   })
   fs.unlinkSync(path)
