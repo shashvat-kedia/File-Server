@@ -12,7 +12,6 @@ const app = express()
 AWS.config.update(config.AWS_CONFIG)
 
 const S3 = new AWS.S3()
-const s3_params = config.S3_CONFIG
 
 var rmq_connection = null
 var con_channel = null
@@ -79,32 +78,44 @@ function consume() {
   }
 }
 
+function getS3Params(body, key) {
+  var s3_params = config.S3_CONFIG
+  s3_params["Body"] = body
+  s3_params["Key"] = key
+  return s3_params
+}
+
+function uploadToS3(s3_params) {
+  S3.upload(s3_params, function(err, data) {
+    if (err) {
+      console.error("S3 Upload Error:- " + err)
+      throw err
+    }
+    if (data) {
+      console.log("File chunk successfully uploaded to AWS S3:- " + data.location)
+    }
+  })
+}
+
 function sendToS3(path) {
   var buffer = new Buffer(config.READ_CHUNKSIZE)
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
+  var file_path = "/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {
     var chunk_hash = hash(chunk)
-    s3_params["Body"] = fc.createReadStream(chunk)
-    s3_params["Key"] = "/chunks/" + chunk_hash + ".txt"
-    s3.upload(s3_params, function(err, data) {
+    var chunk_path = "/chunks/" + chunk_hash + ".txt"
+    uploadToS3(getS3Params(fs.createReadStream(chunk), chunk_path))
+    fs.appendFile(file_path, chunk_path, function(err) {
       if (err) {
-        console.error("S3 Upload Error:- " + err)
+        console.error("File Write Error:- " + err)
         throw err
       }
-      if (data) {
-        console.log("File chunk successfully uploaded to AWS S3:- " + data.location)
-        fs.appendFile("/uploads/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')),
-          chunk_hash, function(err) {
-            if (err) {
-              console.error("File Write Error:- " + err)
-              throw err
-            }
-          })
-      }
     })
-    console.log(hash(chunk))
   })
+  uploadToS3(getS3Params(fs.createReadStream(file_path),
+    "/uploads/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"))
   fs.unlinkSync(path)
+  fs.unlinkSync(file_path)
 }
 
 app.listen(PORT, function() {
