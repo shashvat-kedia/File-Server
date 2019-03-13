@@ -122,7 +122,7 @@ function sendToS3(path) {
   fs.unlinkSync(file_path)
 }
 
-app.listen(PORT, function() {
+server.listen(PORT, function() {
   connectToRMQ()
   console.log("Consumer service listening on :- " + PORT)
 })

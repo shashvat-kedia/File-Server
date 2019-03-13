@@ -15,6 +15,8 @@ var rmq_connection = null
 var pub_channel = null
 var offlinePubQueue = []
 
+var connectedClients = []
+
 const PORT = 8080 || process.env.PORT;
 
 app.use(express.static(__dirname + "/uploads"))
@@ -92,11 +94,17 @@ function publish(content) {
   }
 }
 
+io.on("connection", function(client) {
+  console.log("New connection established")
+  connectedClients.push(client)
+})
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] == config.API_KEY) {
     next()
   }
   else {
+    connectedClients[0].emit('send', 'Uauthorized access tried')
     res.status(303).json({
       "message": "Forbidden"
     })
