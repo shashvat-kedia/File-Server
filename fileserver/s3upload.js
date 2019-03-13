@@ -1,6 +1,3 @@
-//Move from HTTP to socket based connection ass socket based connections provide faster data communications and are 
-//also efficient for exchange of streams of data (usually large files that can be streamed to the clients)
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -64,7 +61,7 @@ function startConsumer() {
       console.error("RMQ Error:- " + err)
       return
     })
-    ch.assertQueue(config.RMQ_NAME, { durable: false })
+    ch.assertQueue(config.QUEUE_NAME_S3_UPLOAD, { durable: false })
     con_channel = ch
     console.log("Consumer started")
     consume()
@@ -73,7 +70,7 @@ function startConsumer() {
 
 function consume() {
   try {
-    con_channel.consume(config.RMQ_NAME, function(message) {
+    con_channel.consume(config.QUEUE_NAME_S3_UPLOAD, function(message) {
       console.log(message.content.toString())
       sendToS3(message.content.toString())
     }, { noAck: true })
@@ -120,6 +117,7 @@ function sendToS3(path) {
     "/uploads/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"))
   fs.unlinkSync(path)
   fs.unlinkSync(file_path)
+  console.log("File upload procedure complete")
 }
 
 server.listen(PORT, function() {

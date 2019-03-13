@@ -8,14 +8,10 @@ const uploader = multer({ dest: '/uploads' });
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const app = express();
-const server = require('http').createServer(app)
-const io = require('socket.io')(server)
 
 var rmq_connection = null
 var pub_channel = null
 var offlinePubQueue = []
-
-var connectedClients = []
 
 const PORT = 8080 || process.env.PORT;
 
@@ -72,7 +68,6 @@ function startPublisher() {
       console.error("RMQ Error:- " + err)
       return
     })
-    ch.assertQueue("jobs", { durable: false })
     pub_channel = ch
     console.log("Publisher started")
     for (var i = 0; i < offlinePubQueue.length; i++) {
@@ -83,9 +78,10 @@ function startPublisher() {
   })
 }
 
-function publish(content) {
+function publish(queueName, content) {
   try {
-    pub_channel.sendToQueue(config.RMQ_NAME, new Buffer(content))
+    pub_channel.assertQueue(queueName, { durable: false })
+    pub_channel.sendToQueue(queueName, new Buffer(content))
     console.log("Message published to RMQ")
   }
   catch (exception) {
@@ -94,17 +90,11 @@ function publish(content) {
   }
 }
 
-io.on("connection", function(client) {
-  console.log("New connection established")
-  connectedClients.push(client)
-})
-
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] == config.API_KEY) {
     next()
   }
   else {
-    connectedClients[0].emit('send', 'Uauthorized access tried')
     res.status(303).json({
       "message": "Forbidden"
     })
@@ -113,6 +103,11 @@ app.use("*", function(req, res, next) {
 
 app.get("/", function(req, res) {
   console.log("Hit home")
+  publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
+    channel: "message",
+    message: "You have hit home",
+    socketHash: req.body.socketHash
+  }))
   res.status(200).send({
     "message": "Hit"
   })
@@ -155,7 +150,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
       "message": "File upload successfull"
     })
     if (pub_channel != null) {
-      publish(destPath)
+      publish(config.QUEUE_NAME_S3_UPLOAD, destPath)
     }
   })
 })
@@ -166,7 +161,7 @@ app.use("*", function(req, res) {
   })
 })
 
-server.listen(PORT, function() {
+app.listen(PORT, function() {
   connectToRMQ()
   console.log("Listening to port: " + PORT)
 })
