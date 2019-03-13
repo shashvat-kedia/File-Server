@@ -2,6 +2,7 @@ const server = require('http').createServer();
 const io = require('socket.io')(server);
 const hash = require('object-hash');
 const amqp = require('amqplib/callback_api');
+const config = require('./config.js');
 
 var PORT = 27127 | process.env.PORT
 
@@ -57,7 +58,6 @@ function startConsumer() {
 function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_NOTIFICATION, function(message) {
-      console.log(message.content.toString())
       sendNotification(JSON.parse(message.content.toString()))
     }, { noAck: true })
   }
@@ -67,19 +67,27 @@ function consume() {
 }
 
 function sendNotification(messageConfig) {
-  connectedDevices[messageConfig.socket].emit(messageConfig.channel, messageConfig.message)
+  var socket = connectedDevices[messageConfig.socketId]
+  if (socket != null) {
+    socket.emit(messageConfig.channel, messageConfig.message)
+    console.log("Message emitted")
+  }
+  else {
+    console.error("Socker returned null")
+  }
 }
 
 io.on('connection', function(client) {
   console.log("New connection added")
-  console.log(client)
+  connectedDevices[client['id']] = client
   client.on('closing', function(data) {
-    connectedDevice[hash(client)] = null
+    connectedDevices[client['id']] = null
   })
   client.emit('message', 'Connected to Notification Service')
-  connectedDevice[hash(client)] = client
+  connectedDevices[client['id']] = client
 })
 
 server.listen(PORT, function() {
+  connectToRMQ()
   console.log("Listening to PORT " + PORT)
 })

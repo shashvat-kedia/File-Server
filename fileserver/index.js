@@ -103,14 +103,17 @@ app.use("*", function(req, res, next) {
 
 app.get("/", function(req, res) {
   console.log("Hit home")
-  publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
-    channel: "message",
-    message: "You have hit home",
-    socketHash: req.body.socketHash
-  }))
   res.status(200).send({
     "message": "Hit"
   })
+})
+
+app.get("/:socketId", function(req, res) {
+  publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
+    channel: "message",
+    message: "You have hit home",
+    socketId: req.params.socketId
+  }))
 })
 
 app.post("/text", function(req, res) {
