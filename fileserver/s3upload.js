@@ -10,8 +10,9 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
-const io = require('socket.io')(app);
 const app = express()
+const server = require('http').createServer(app);
+const io = require('socket.io')(server);
 
 AWS.config.update(config.AWS_CONFIG)
 

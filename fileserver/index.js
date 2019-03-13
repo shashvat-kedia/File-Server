@@ -8,6 +8,8 @@ const uploader = multer({ dest: '/uploads' });
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const app = express();
+const server = require('http').createServer(app)
+const io = require('socket.io')(server)
 
 var rmq_connection = null
 var pub_channel = null
@@ -156,7 +158,7 @@ app.use("*", function(req, res) {
   })
 })
 
-app.listen(PORT, function() {
+server.listen(PORT, function() {
   connectToRMQ()
   console.log("Listening to port: " + PORT)
 })
