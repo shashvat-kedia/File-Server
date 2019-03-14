@@ -10,6 +10,7 @@ const hash = require('object-hash');
 const app = express()
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
+const ss = require('socket.io-stream');
 
 AWS.config.update(config.AWS_CONFIG)
 
@@ -118,7 +119,7 @@ function consume() {
         sendToS3(jsonMessage.destPath)
       }
       else {
-        pullFromS3(jsonMessage.fileId, jsonMessage.socketId)
+        pullFromS3(getS3ParamsForPull(jsonMessage.fileId), jsonMessage.socketId)
       }
     }, { noAck: true })
   }
@@ -134,6 +135,12 @@ function getS3Params(body, key) {
   return s3_params
 }
 
+function getS3ParamsForPull(fileId) {
+  s3_params = config.S3_CONFIG
+  s3_params["Key"] = "/uploads/files/" + fileId + ".txt"
+  return s3_params
+}
+
 function uploadToS3(s3_params) {
   S3.upload(s3_params, function(err, data) {
     if (err) {
@@ -146,7 +153,41 @@ function uploadToS3(s3_params) {
   })
 }
 
-function pullFromS3(fileId, socketId) {
+function ifFileExists(s3_params) {
+  S3.headObject(s3_params, function(err, metadata) {
+    if (err && err.code == 'Not Found') {
+      console.log(err)
+      return false
+    }
+    console.log(metadata)
+    return true
+  })
+}
+
+function pullFromS3(s3_params, socketId) {
+  var s3_params = getS
+  if (fileExistsOnS3(s3_params)) {
+    S3.getObject(s3_params, function(err, data) {
+      if (err) {
+        console.error(err)
+        socket.emit("data", JSON.stringify({
+          'status': 500,
+          'message': "Internal Server Error"
+        }))
+      }
+      //Have to test weather file can be streamed to the cient or not
+      var stream = ss.createStream()
+      var buf = new Buffer(data, 'txt')
+      ss(socket).emit('data', stream)
+      stream.pipe(fc.createReadStream(buf))
+    })
+  }
+  else {
+    socketId.emit("data", JSON.stringify({
+      'status': 404,
+      'message': "Not found"
+    }))
+  }
   //Decision to be made weather to use notification service or not
 }
 
@@ -165,7 +206,7 @@ function sendToS3(path) {
     })
   })
   uploadToS3(getS3Params(fs.createReadStream(file_path),
-    "/uploads/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"))
+    "/uploads/files/" + getTimestampToAppend() + ".txt"))
   fs.unlinkSync(path)
   fs.unlinkSync(file_path)
   console.log("File upload procedure complete")
