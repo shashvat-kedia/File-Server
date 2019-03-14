@@ -71,8 +71,7 @@ function startPublisher() {
     pub_channel = ch
     console.log("Publisher started")
     for (var i = 0; i < offlinePubQueue.length; i++) {
-      var content = offlinePubQueue[i]
-      publish(content)
+      publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
     }
     offlinePubQueue = []
   })
@@ -86,7 +85,10 @@ function publish(queueName, content) {
   }
   catch (exception) {
     console.error("Publisher Exception:- " + exception.message)
-    offlinePubQueue.push(content)
+    offlinePubQueue.push({
+      content: content,
+      queueName: queueName
+    })
   }
 }
 
@@ -114,6 +116,7 @@ app.get("/:socketId", function(req, res) {
     message: "You have hit home",
     socketId: req.params.socketId
   }))
+  console.log("Welcome message sent")
 })
 
 app.post("/text", function(req, res) {
@@ -153,8 +156,22 @@ app.post("/upload", uploader.single("file"), function(req, res) {
       "message": "File upload successfull"
     })
     if (pub_channel != null) {
-      publish(config.QUEUE_NAME_S3_UPLOAD, destPath)
+      publish(config.QUEUE_NAME_S3_UPLOAD, JSON.stringify({
+        action: config.ACTION_UPLOAD_FILE,
+        destPath: destPath
+      }))
     }
+  })
+})
+
+app.get("/pull/:socketId/:fileId", function(req, res) {
+  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+    action: config.ACTION_PULL_FILE,
+    socketId: res.params.socketId,
+    fileId: res.params.fileId
+  }))
+  res.status(307).json({
+    "message": 'Listen on 27127'
   })
 })
 

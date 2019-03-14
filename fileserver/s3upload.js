@@ -17,6 +17,8 @@ const S3 = new AWS.S3()
 
 var rmq_connection = null
 var con_channel = null
+var pub_channel = null
+var pubQueue = []
 
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
@@ -43,8 +45,47 @@ function connectToRMQ() {
     })
     console.log("RMQ connected")
     rmq_connection = con
+    startPublisher()
     startConsumer()
   })
+}
+
+function startPublisher() {
+  rmq_connection.createConfirmChannel(function(err, ch) {
+    if (err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    }
+    ch.on("error", function(err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    })
+    ch.on("close", function(err) {
+      console.error("RMQ Error:- " + err)
+      return
+    })
+    pub_channel = ch
+    console.log("Publisher started")
+    for (var i = 0; i < offlinePubQueue.length; i++) {
+      publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+    }
+    offlinePubQueue = []
+  })
+}
+
+function publish(queueName, content) {
+  try {
+    pub_channel.assertQueue(queueName, { durable: false })
+    pub_channel.sendToQueue(queueName, new Buffer(content))
+    console.log("Message published to RMQ")
+  }
+  catch (exception) {
+    console.error("Publisher Exception:- " + exception.message)
+    offlinePubQueue.push({
+      content: content,
+      queueName: queueName
+    })
+  }
 }
 
 function startConsumer() {
@@ -72,7 +113,13 @@ function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_S3_UPLOAD, function(message) {
       console.log(message.content.toString())
-      sendToS3(message.content.toString())
+      var jsonMessage = JSON.parse(message.content.toString())
+      if (jsonMessage.action == config.ACTION_FILE_UPLOAD) {
+        sendToS3(jsonMessage.destPath)
+      }
+      else {
+        pullFromS3(jsonMessage.fileId, jsonMessage.socketId)
+      }
     }, { noAck: true })
   }
   catch (exception) {
@@ -97,6 +144,10 @@ function uploadToS3(s3_params) {
       console.log("File chunk successfully uploaded to AWS S3:- " + data.location)
     }
   })
+}
+
+function pullFromS3(fileId, socketId) {
+  //Decision to be made weather to use notification service or not
 }
 
 function sendToS3(path) {
