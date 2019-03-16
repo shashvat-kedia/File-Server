@@ -171,7 +171,7 @@ app.get("/pull/:socketId/:fileId", function(req, res) {
     fileId: res.params.fileId
   }))
   res.status(307).json({
-    "message": 'Listen on 27127'
+    "message": "Data stream starting"
   })
 })
 

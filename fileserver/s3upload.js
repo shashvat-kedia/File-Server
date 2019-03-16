@@ -153,7 +153,7 @@ function uploadToS3(s3_params) {
   })
 }
 
-function ifFileExists(s3_params) {
+function fileExistsOnS3(s3_params) {
   S3.headObject(s3_params, function(err, metadata) {
     if (err && err.code == 'Not Found') {
       console.log(err)
