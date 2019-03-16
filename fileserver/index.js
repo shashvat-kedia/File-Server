@@ -70,8 +70,10 @@ function startPublisher() {
     })
     pub_channel = ch
     console.log("Publisher started")
-    for (var i = 0; i < offlinePubQueue.length; i++) {
-      publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+    if (offlinePubQueue != null) {
+      for (var i = 0; i < offlinePubQueue.length; i++) {
+        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+      }
     }
     offlinePubQueue = []
   })

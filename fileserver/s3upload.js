@@ -19,7 +19,7 @@ const S3 = new AWS.S3()
 var rmq_connection = null
 var con_channel = null
 var pub_channel = null
-var pubQueue = []
+var offlinePubQueue = []
 
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
@@ -67,8 +67,10 @@ function startPublisher() {
     })
     pub_channel = ch
     console.log("Publisher started")
-    for (var i = 0; i < offlinePubQueue.length; i++) {
-      publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+    if (offlinePubQueue != null) {
+      for (var i = 0; i < offlinePubQueue.length; i++) {
+        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+      }
     }
     offlinePubQueue = []
   })
@@ -188,7 +190,6 @@ function pullFromS3(s3_params, socketId) {
       'message': "Not found"
     }))
   }
-  //Decision to be made weather to use notification service or not
 }
 
 function sendToS3(path) {
