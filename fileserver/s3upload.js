@@ -145,7 +145,7 @@ function pullFromS3(s3_params, socketId) {
 function sendToS3(path) {
   chunk_paths = []
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
-  var file_path = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  var file_path = "files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {
     var chunk_hash = hash(chunk)
     var chunk_path = "/chunks/" + chunk_hash + ".txt"
