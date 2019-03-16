@@ -119,6 +119,9 @@ app.get("/:socketId", function(req, res) {
     socketId: req.params.socketId
   }))
   console.log("Welcome message sent")
+  res.status(200).json({
+    "message": "Message sent"
+  })
 })
 
 app.post("/text", function(req, res) {
@@ -158,7 +161,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
       "message": "File upload successfull"
     })
     if (pub_channel != null) {
-      publish(config.QUEUE_NAME_S3_UPLOAD, JSON.stringify({
+      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
         action: config.ACTION_UPLOAD_FILE,
         destPath: destPath
       }))

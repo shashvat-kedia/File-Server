@@ -8,18 +8,11 @@ const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const app = express()
-const server = require('http').createServer(app);
-const io = require('socket.io')(server);
-const ss = require('socket.io-stream');
 
-AWS.config.update(config.AWS_CONFIG)
-
-const S3 = new AWS.S3()
+const S3 = new AWS.S3(config.AWS_CONFIG)
 
 var rmq_connection = null
 var con_channel = null
-var pub_channel = null
-var offlinePubQueue = []
 
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
@@ -46,49 +39,8 @@ function connectToRMQ() {
     })
     console.log("RMQ connected")
     rmq_connection = con
-    startPublisher()
     startConsumer()
   })
-}
-
-function startPublisher() {
-  rmq_connection.createConfirmChannel(function(err, ch) {
-    if (err) {
-      console.error("RMQ Error:- " + err.message)
-      return
-    }
-    ch.on("error", function(err) {
-      console.error("RMQ Error:- " + err.message)
-      return
-    })
-    ch.on("close", function(err) {
-      console.error("RMQ Error:- " + err)
-      return
-    })
-    pub_channel = ch
-    console.log("Publisher started")
-    if (offlinePubQueue != null) {
-      for (var i = 0; i < offlinePubQueue.length; i++) {
-        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
-      }
-    }
-    offlinePubQueue = []
-  })
-}
-
-function publish(queueName, content) {
-  try {
-    pub_channel.assertQueue(queueName, { durable: false })
-    pub_channel.sendToQueue(queueName, new Buffer(content))
-    console.log("Message published to RMQ")
-  }
-  catch (exception) {
-    console.error("Publisher Exception:- " + exception.message)
-    offlinePubQueue.push({
-      content: content,
-      queueName: queueName
-    })
-  }
 }
 
 function startConsumer() {
@@ -105,7 +57,7 @@ function startConsumer() {
       console.error("RMQ Error:- " + err)
       return
     })
-    ch.assertQueue(config.QUEUE_NAME_S3_UPLOAD, { durable: false })
+    ch.assertQueue(config.QUEUE_NAME_S3_SERVICE, { durable: false })
     con_channel = ch
     console.log("Consumer started")
     consume()
@@ -114,10 +66,9 @@ function startConsumer() {
 
 function consume() {
   try {
-    con_channel.consume(config.QUEUE_NAME_S3_UPLOAD, function(message) {
-      console.log(message.content.toString())
+    con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
-      if (jsonMessage.action == config.ACTION_FILE_UPLOAD) {
+      if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
         sendToS3(jsonMessage.destPath)
       }
       else {
@@ -143,14 +94,14 @@ function getS3ParamsForPull(fileId) {
   return s3_params
 }
 
-function uploadToS3(s3_params) {
+function uploadToS3(s3_params, chunk_hash) {
   S3.upload(s3_params, function(err, data) {
     if (err) {
       console.error("S3 Upload Error:- " + err)
       throw err
     }
     if (data) {
-      console.log("File chunk successfully uploaded to AWS S3:- " + data.location)
+      console.log("File chunk successfully uploaded to AWS S3:- " + chunk_hash)
     }
   })
 }
@@ -167,7 +118,6 @@ function fileExistsOnS3(s3_params) {
 }
 
 function pullFromS3(s3_params, socketId) {
-  var s3_params = getS
   if (fileExistsOnS3(s3_params)) {
     S3.getObject(s3_params, function(err, data) {
       if (err) {
@@ -193,27 +143,31 @@ function pullFromS3(s3_params, socketId) {
 }
 
 function sendToS3(path) {
+  chunk_paths = []
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
-  var file_path = "/files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  var file_path = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {
     var chunk_hash = hash(chunk)
     var chunk_path = "/chunks/" + chunk_hash + ".txt"
-    uploadToS3(getS3Params(fs.createReadStream(chunk), chunk_path))
-    fs.appendFile(file_path, chunk_path, function(err) {
+    chunk_paths.push(chunk_path)
+    uploadToS3(getS3Params(chunk, chunk_path), chunk_hash)
+  })
+  readStream.on('close', function() {
+    fs.unlinkSync(path)
+    fs.writeFile(file_path, chunk_paths.toString(), function(err) {
       if (err) {
-        console.error("File Write Error:- " + err)
-        throw err
+        console.error(err)
+      }
+      else {
+        uploadToS3(getS3Params(fs.createReadStream(file_path),
+          "/uploads/files/" + file_path), "Chunk hash path file upload")
+        fs.unlinkSync(file_path)
       }
     })
   })
-  uploadToS3(getS3Params(fs.createReadStream(file_path),
-    "/uploads/files/" + getTimestampToAppend() + ".txt"))
-  fs.unlinkSync(path)
-  fs.unlinkSync(file_path)
-  console.log("File upload procedure complete")
 }
 
-server.listen(PORT, function() {
+app.listen(PORT, function() {
   connectToRMQ()
   console.log("Consumer service listening on :- " + PORT)
 })
