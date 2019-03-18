@@ -176,12 +176,17 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
+//Endpoint to get file  metadata to be added here
+//To provide correct content-length cache the metadat corresponsing to each chunk
+app.get("/metadata/:fileId", function(req, res) {
+
+})
+
 //Multithreaded download to be supported here
 
 app.get("/pull/:fileId", function(req, res) {
-  var fileExistsPromise = s3Pull.fileExists(req.params.fileId)
-  fileExistsPromise.then(function(response) {
-    if (response) {
+  s3Pull.getFileMetadata(req.params.fileId).then(function(response) {
+    if (response != null) {
       s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
         if (response.length > 0) {
           var rAF = randomAccessFile(req.params.fileId + response[0])
