@@ -61,7 +61,7 @@ function getChunk(chunkPathWithOffset) {
 }
 
 module.exports = {
-  fileExists: function fileExists(fileId) {
+  getFileMetadata: function getFileMetadata(fileId) {
     var deferred = q.defer()
     S3.headObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, metadata) {
       if (err && err.code == 'Not Found') {
@@ -89,7 +89,7 @@ module.exports = {
     })
     return deferred.promise
   },
-  pullFromS3: function pullFromS3(fileId, chunkPaths) {
+  pullChunkFromS3: function pullChunkFromS3(chunkPaths) {
     chunkPathsWithOffset = []
     for (var i = 0; i < chunkPaths.length; i++) {
       chunkPathsWithOffset.push({

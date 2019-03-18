@@ -16,6 +16,8 @@ var rmq_connection = null
 var pub_channel = null
 var offlinePubQueue = []
 
+//Decide on different READ_CHUNKSIZE for different file formats
+
 const PORT = 8080 || process.env.PORT;
 
 app.use(express.static(__dirname + "/uploads"))
@@ -176,13 +178,14 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
-//Endpoint to get file  metadata to be added here
-//To provide correct content-length cache the metadat corresponsing to each chunk
-app.get("/metadata/:fileId", function(req, res) {
-
-})
-
 //Multithreaded download to be supported here
+
+app.head("/pull/:fileId", function(req, res) {
+  res.set({
+    "Accept-Ranges": "bytes",
+    "Content-Length": 
+  })
+})
 
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.getFileMetadata(req.params.fileId).then(function(response) {
@@ -190,7 +193,7 @@ app.get("/pull/:fileId", function(req, res) {
       s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
         if (response.length > 0) {
           var rAF = randomAccessFile(req.params.fileId + response[0])
-          s3Pull.pullFromS3(req.params.fileId, response.slice(1, response.length)).then(function(response) {
+          s3Pull.pullChunkFromS3(response.slice(1, response.length)).then(function(response) {
             for (var j = 0; j < response.length; j++) {
               if (response[j].status != 200) {
                 //Unsuccessfull
