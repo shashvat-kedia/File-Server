@@ -4,16 +4,8 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const hash = require('object-hash');
 const q = require('q');
-const redis = require('redis');
-const redisClient = redis.createClient();
-
-//Redis to be added here
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
-
-redisClient.on('connect', function() {
-  console.log("Redis client connected")
-})
 
 function getS3ParamsForPull(path) {
   s3_params = config.S3_CONFIG

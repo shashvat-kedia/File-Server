@@ -10,6 +10,8 @@ const s3Pull = require('./s3Pull.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const randomAccessFile = require('random-access-file');
+const redis = require('redis');
+const redisClient = redis.createClient();
 const app = express();
 
 var rmq_connection = null
@@ -101,6 +103,14 @@ function publish(queueName, content) {
   }
 }
 
+redisClient.on('connect', function() {
+  console.log("Redis client connected")
+})
+
+redisClient.on('error', function(err) {
+  console.error(err)
+})
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] == config.API_KEY) {
     next()
@@ -185,34 +195,59 @@ app.get("/pull/:fileId", function(req, res) {
       s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
         if (response.length > 0) {
           var rAF = randomAccessFile(req.params.fileId + response[0])
-          s3Pull.pullFromS3(req.params.fileId, response.slice(1, response.length)).then(function(response) {
-            for (var j = 0; j < response.length; j++) {
-              if (response[j].status != 200) {
-                //Unsuccessfull
-                return
+          var chunksToFetch = []
+          for (var i = 1; i < response.length; i++) {
+            redisClient.get(response[i], function(err, result) {
+              if (err) {
+                console.error(error)
+              }
+              else if (result == null) {
+                consol.log("Chunk not cached in redis")
+                chunksToFetch.push(response[i])
               }
               else {
-                if (!fs.existsSync(rAF.filename)) {
-                  fs.writeFileSync(rAF.filename, "", function(err) {
-                    if (err) {
-                      console.error(err)
-                    }
-                  })
-                }
-                rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
+                rAF.write((i - 1) * config.READ_CHUNKSIZE, Buffer.from(result), function(err) {
                   if (err) {
                     console.error(err)
                   }
-                  if (j >= response.length - 1) {
+                  if (i >= response.length - 1) {
                     fs.createReadStream(rAF.filename).pipe(res)
                     fs.unlinkSync(rAF.filename)
                   }
                 })
               }
-            }
-          }).fail(function(err) {
-            console.error(err)
-          })
+            })
+          }
+          if (chunksToFetch.length > 0) {
+            s3Pull.pullFromS3(req.params.fileId, chunksToFetch).then(function(response) {
+              for (var j = 0; j < response.length; j++) {
+                if (response[j].status != 200) {
+                  //Unsuccessfull
+                  return
+                }
+                else {
+                  if (!fs.existsSync(rAF.filename)) {
+                    fs.writeFileSync(rAF.filename, "", function(err) {
+                      if (err) {
+                        console.error(err)
+                      }
+                    })
+                  }
+                  rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
+                    if (err) {
+                      console.error(err)
+                    }
+                    if (j >= response.length - 1) {
+                      fs.createReadStream(rAF.filename).pipe(res)
+                      fs.unlinkSync(rAF.filename)
+                    }
+                  })
+                }
+              }
+            }).fail(function(err) {
+              console.error(err)
+            })
+          }
         }
         else {
           res.status(422).json({
