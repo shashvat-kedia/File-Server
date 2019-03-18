@@ -181,63 +181,75 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 //Multithreaded download to be supported here
 
 app.head("/pull/:fileId", function(req, res) {
-  res.set({
-    "Accept-Ranges": "bytes",
-    "Content-Length": 
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      s3Pull.getFileLength(response.chunkPaths[response.chunkPaths.length - 1]).then(function(contentLength) {
+        if (contentLength < 0) {
+          res.status(422).json({
+            "message": "File broken"
+          })
+        }
+        else {
+          res.set({
+            "Accept-Ranges": "bytes",
+            "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLength,
+          })
+          res.end()
+        }
+      })
+    }
+    else {
+      res.status(response.status).json({
+        "message": response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
   })
 })
 
 app.get("/pull/:fileId", function(req, res) {
-  s3Pull.getFileMetadata(req.params.fileId).then(function(response) {
-    if (response != null) {
-      s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
-        if (response.length > 0) {
-          var rAF = randomAccessFile(req.params.fileId + response[0])
-          s3Pull.pullChunkFromS3(response.slice(1, response.length)).then(function(response) {
-            for (var j = 0; j < response.length; j++) {
-              if (response[j].status != 200) {
-                //Unsuccessfull
-                return
-              }
-              else {
-                if (!fs.existsSync(rAF.filename)) {
-                  fs.writeFileSync(rAF.filename, "", function(err) {
-                    if (err) {
-                      console.error(err)
-                    }
-                  })
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      var rAF = randomAccessFile(req.params.fileId + response.chunkPaths[0])
+      s3Pull.pullChunkFromS3(response.chunkPaths.slice(1, response.length)).then(function(response) {
+        for (var j = 0; j < response.length; j++) {
+          if (response[j].status != 200) {
+            res.status(422).json({
+              "message": "File broken"
+            })
+            return
+          }
+          else {
+            if (!fs.existsSync(rAF.filename)) {
+              fs.writeFileSync(rAF.filename, "", function(err) {
+                if (err) {
+                  console.error(err)
                 }
-                rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
-                  if (err) {
-                    console.error(err)
-                  }
-                  if (j >= response.length - 1) {
-                    fs.createReadStream(rAF.filename).pipe(res)
-                    fs.unlinkSync(rAF.filename)
-                  }
-                })
-              }
+              })
             }
-          }).fail(function(err) {
-            console.error(err)
-          })
-        }
-        else {
-          res.status(422).json({
-            "message": "Broken file"
-          })
+            rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
+              if (err) {
+                console.error(err)
+              }
+              if (j >= response.length - 1) {
+                fs.createReadStream(rAF.filename).pipe(res)
+                fs.unlinkSync(rAF.filename)
+              }
+            })
+          }
         }
       }).fail(function(err) {
         console.error(err)
       })
     }
     else {
-      res.status(404).json({
-        "message": "File Not Found"
+      res.status(response.status).json({
+        "message": response.message
       })
     }
   }).fail(function(err) {
-    console.log(err)
+    console.error(err)
   })
 })
 

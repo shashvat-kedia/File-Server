@@ -60,32 +60,68 @@ function getChunk(chunkPathWithOffset) {
   return deferred.promise
 }
 
+function getFileMetadata(key) {
+  var deferred = q.defer()
+  S3.headObject(getS3ParamsForPull(key), function(err, metadata) {
+    if (err && err.code == 'Not Found') {
+      console.error("File not found on S3")
+      deferred.resolve(null)
+    }
+    else if (err) {
+      console.error(err)
+      deferred.reject(err)
+    }
+    else {
+      deferred.resolve(metadata)
+    }
+  })
+  return deferred.promise
+}
+
 module.exports = {
-  getFileMetadata: function getFileMetadata(fileId) {
+  getFileLength: function getFileLength(key) {
     var deferred = q.defer()
-    S3.headObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, metadata) {
-      if (err && err.code == 'Not Found') {
-        console.error("File not found on S3")
-        deferred.resolve(false)
-      }
-      else if (err) {
-        console.error(err)
-        deferred.reject(err)
+    getFileMetadata(key).then(function(response) {
+      if (response != null) {
+        deferred.resolve(response.ContentLength)
       }
       else {
-        deferred.resolve(true)
+        deferred.resolve(-1)
       }
     })
     return deferred.promise
   },
-  pullChunkPathFileFromS3: function pullChunkFilePathFromS3(fileId) {
+  pullChunkPathFileFromS3: function pullChunkPathFileFromS3(fileId) {
     var deferred = q.defer()
-    S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
-      if (err) {
-        deferred.reject(err)
+    getFileMetadata("/uploads/files/" + fileId + ".txt").then(function(response) {
+      if (response != null) {
+        S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
+          if (err) {
+            deferred.reject(err)
+          }
+          chunkPaths = data.Body.toString().split(',')
+          if (chunkPaths.length > 1) { //1 Because the first element signifies the file extension
+            deferred.resolve({
+              "status": 200,
+              "chunkPaths": chunkPaths
+            })
+          }
+          else {
+            deferred.resolve({
+              "status": 422,
+              "message": "File broken"
+            })
+          }
+        })
       }
-      chunkPaths = data.Body.toString().split(',')
-      deferred.resolve(chunkPaths)
+      else {
+        deferred.resolve({
+          "status": 404,
+          "message": "File not found"
+        })
+      }
+    }).fail(function(err) {
+      console.error(err)
     })
     return deferred.promise
   },
