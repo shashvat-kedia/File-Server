@@ -96,7 +96,7 @@ function uploadToS3(s3_params, chunk_hash) {
 }
 
 function sendToS3(path) {
-  chunk_paths = []
+  chunk_paths = [path.substring(path.lastIndexOf('.'), path.length)]
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
   var file_path = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {

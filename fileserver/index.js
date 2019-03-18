@@ -9,6 +9,7 @@ const config = require('./config.js');
 const s3Pull = require('./s3Pull.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
+const randomAccessFile = require('random-access-file');
 const app = express();
 
 var rmq_connection = null
@@ -183,15 +184,32 @@ app.get("/pull/:fileId", function(req, res) {
     if (response) {
       s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
         if (response.length > 0) {
-          s3Pull.pullFromS3(req.params.fileId, response).then(function(response) {
-            for (var i = 0; i < response.length; i++) {
-              if (response[i].status != 200) {
+          var rAF = randomAccessFile(req.params.fileId + response[0])
+          s3Pull.pullFromS3(req.params.fileId, response.slice(1, response.length)).then(function(response) {
+            for (var j = 0; j < response.length; j++) {
+              if (response[j].status != 200) {
                 //Unsuccessfull
                 return
               }
+              else {
+                if (!fs.existsSync(rAF.filename)) {
+                  fs.writeFileSync(rAF.filename, "", function(err) {
+                    if (err) {
+                      console.error(err)
+                    }
+                  })
+                }
+                rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
+                  if (err) {
+                    console.error(err)
+                  }
+                  if (j >= response.length - 1) {
+                    fs.createReadStream(rAF.filename).pipe(res)
+                    fs.unlinkSync(rAF.filename)
+                  }
+                })
+              }
             }
-            console.log("All files found:- " + response[0].filename)
-            fs.createReadStream(response[0].filename).pipe(res)
           }).fail(function(err) {
             console.error(err)
           })
@@ -204,7 +222,7 @@ app.get("/pull/:fileId", function(req, res) {
       })
     }
     else {
-      console.log(2)
+      //File not found
     }
   }).fail(function(err) {
     console.log(err)

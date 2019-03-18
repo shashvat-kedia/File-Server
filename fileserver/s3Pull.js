@@ -4,7 +4,6 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const hash = require('object-hash');
 const q = require('q');
-const randomAccessFile = require('random-access-file');
 
 //Redis to be added here
 
@@ -26,9 +25,9 @@ function getChunk(chunkPathWithOffset) {
       deferred.reject(response.error)
     }
     else {
-      chunkPathWithOffset.file.write(chunkPathWithOffset.offset, Buffer.from(data))
       deferred.resolve({
-        'filename': chunkPathWithOffset.file.filename,
+        'data': data,
+        'offset': chunkPathWithOffset.offset,
         'status': 200
       })
     }
@@ -67,12 +66,10 @@ module.exports = {
   },
   pullFromS3: function pullFromS3(fileId, chunkPaths) {
     chunkPathsWithOffset = []
-    var rAF = randomAccessFile(fileId + ".txt")
     for (var i = 0; i < chunkPaths.length; i++) {
       chunkPathsWithOffset.push({
         path: chunkPaths[i],
-        offset: i * config.READ_CHUNKSIZE,
-        file: rAF
+        offset: i * config.READ_CHUNKSIZE
       })
     }
     if (chunkPaths.length > 0) {
