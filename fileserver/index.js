@@ -176,8 +176,17 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 })
 
 app.get("/pull/:fileId", function(req, res) {
-  var a = s3Pull.pullFromS3(req.params.fileId)
-  console.log(a)
+  var fileExistsPromise = s3Pull.fileExists(req.params.fileId)
+  fileExistsPromise.then(function(response) {
+    if (response) {
+      s3Pull.
+    }
+    else {
+      console.log(2)
+    }
+  }).fail(function(error) {
+    console.log(error)
+  })
 })
 
 app.use("*", function(req, res) {

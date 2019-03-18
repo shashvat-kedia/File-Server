@@ -6,6 +6,8 @@ const hash = require('object-hash');
 const q = require('q');
 const randomAccessFile = require('random-access-file');
 
+//Redis to be added here
+
 const S3 = new AWS.S3(config.AWS_CONFIG)
 
 function getS3ParamsForPull(path) {
@@ -25,29 +27,42 @@ function getChunk(chunkPathWithOffset) {
     }
     else {
       chunkPathWithOffset.file.write(chunkPathWithOffset.offset, Buffer.from(data))
-      deferred.resolve("Done")
+      deferred.resolve({
+        'file': chunkPathWithOffset.file.filename,
+        'status': 200
+      })
     }
   }).send()
   return deferred.promise
 }
 
 module.exports = {
-  pullFromS3: function pullFromS3(fileId) {
+  fileExists: function fileExists(fileId){
+    var deferred = q.defer()
     S3.headObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, metadata) {
       if (err && err.code == 'Not Found') {
-        console.error(err)
-        //Send Message to Notification service for file not found
+        console.error("File not found on S3")
+        deferred.resolve(false)
       }
-      else {
-        console.log(metadata)
-        console.log(2)
-        S3.getObject(s3_params, function(err, data) {
+      else if(err){
+        console.error(err)
+        deferred.reject(err)
+      }
+      else{
+        deferred.resolve(true)
+      }
+    })
+    return deferred.promise
+  },
+  pullFromS3: function pullFromS3(fileId) {
+    S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
           if (err) {
             console.error(err)
           }
           chunkPaths = data.Body.toString().split(',')
           chunkPathsWithOffset = []
-          var rAF = randomAccessFile("nesfile.txt")
+          //Dynamic path calculation to be added here
+          var rAF = randomAccessFile("uploads/nesfile.txt")
           for (var i = 0; i < chunkPaths.length; i++) {
             chunkPathsWithOffset.push({
               path: chunkPaths[i],
@@ -56,16 +71,11 @@ module.exports = {
             })
           }
           if (chunkPaths.length > 0) {
-            console.log(chunkPaths)
-            q.all(chunkPathsWithOffset.map(getChunk)).then(function(response) {
-              console.log(response)
-            })
+            return q.all(chunkPathWithOffset.map(getChunk))
           }
           else {
-            //Send Message to Notification service for empty file
+            return null
           }
         })
-      }
-    })
   }
 }
