@@ -7,7 +7,6 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
-const q = require('q');
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)

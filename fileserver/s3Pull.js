@@ -37,24 +37,24 @@ function getChunk(chunkPathWithOffset) {
 }
 
 module.exports = {
-  fileExists: function fileExists(fileId){
+  fileExists: function fileExists(fileId) {
     var deferred = q.defer()
     S3.headObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, metadata) {
       if (err && err.code == 'Not Found') {
         console.error("File not found on S3")
         deferred.resolve(false)
       }
-      else if(err){
+      else if (err) {
         console.error(err)
         deferred.reject(err)
       }
-      else{
+      else {
         deferred.resolve(true)
       }
     })
     return deferred.promise
   },
-  pullChunkPathFileFromS3: function pullChunkFilePathFromS3(fileId){
+  pullChunkPathFileFromS3: function pullChunkFilePathFromS3(fileId) {
     var deferred = q.defer()
     S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
       if (err) {
@@ -65,21 +65,21 @@ module.exports = {
     })
     return deferred.promise
   },
-  pullFromS3: function pullFromS3(fileId,chunkPaths) {
-          chunkPathsWithOffset = []
-          var rAF = randomAccessFile(fileId + ".txt")
-          for (var i = 0; i < chunkPaths.length; i++) {
-            chunkPathsWithOffset.push({
-              path: chunkPaths[i],
-              offset: i * config.READ_CHUNKSIZE,
-              file: rAF
-            })
-          }
-          if (chunkPaths.length > 0) {
-            return q.all(chunkPathsWithOffset.map(getChunk))
-          }
-          else {
-            return null
-          }
+  pullFromS3: function pullFromS3(fileId, chunkPaths) {
+    chunkPathsWithOffset = []
+    var rAF = randomAccessFile(fileId + ".txt")
+    for (var i = 0; i < chunkPaths.length; i++) {
+      chunkPathsWithOffset.push({
+        path: chunkPaths[i],
+        offset: i * config.READ_CHUNKSIZE,
+        file: rAF
+      })
+    }
+    if (chunkPaths.length > 0) {
+      return q.all(chunkPathsWithOffset.map(getChunk))
+    }
+    else {
+      return null
+    }
   }
 }
