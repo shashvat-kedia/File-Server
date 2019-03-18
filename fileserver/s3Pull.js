@@ -28,7 +28,7 @@ function getChunk(chunkPathWithOffset) {
   redisClient.get(chunkPathWithOffset.path, function(err, result) {
     if (err) {
       console.error(err)
-      deferred.reject(response.error)
+      deferred.reject(err)
     }
     else if (result == null) {
       var data = ""
@@ -62,17 +62,31 @@ function getChunk(chunkPathWithOffset) {
 
 function getFileMetadata(key) {
   var deferred = q.defer()
-  S3.headObject(getS3ParamsForPull(key), function(err, metadata) {
-    if (err && err.code == 'Not Found') {
-      console.error("File not found on S3")
-      deferred.resolve(null)
-    }
-    else if (err) {
+  redisClient.get(key, function(err, result) {
+    if (err) {
       console.error(err)
       deferred.reject(err)
     }
+    else if (result == null) {
+      S3.headObject(getS3ParamsForPull(key), function(err, metadata) {
+        if (err && err.code == 'Not Found') {
+          console.error("File not found on S3")
+          deferred.resolve(null)
+        }
+        else if (err) {
+          console.error(err)
+          deferred.reject(err)
+        }
+        else {
+          redisClient.set(key, JSON.stringify(metadata))
+          deferred.resolve(metadata)
+        }
+      })
+    }
     else {
-      deferred.resolve(metadata)
+      console.log(1)
+      console.log("Redis cache hit")
+      deferred.resolve(JSON.parse(result))
     }
   })
   return deferred.promise
