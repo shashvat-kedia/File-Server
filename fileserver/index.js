@@ -175,17 +175,39 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
+//Multithreaded download to be supported here
+
 app.get("/pull/:fileId", function(req, res) {
   var fileExistsPromise = s3Pull.fileExists(req.params.fileId)
   fileExistsPromise.then(function(response) {
     if (response) {
-      s3Pull.
+      s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+        if (response.length > 0) {
+          s3Pull.pullFromS3(req.params.fileId, response).then(function(response) {
+            for (var i = 0; i < response.length; i++) {
+              if (response[i].status != 200) {
+                //Unsuccessfull
+                return
+              }
+            }
+            console.log("All files found:- " + response[0].filename)
+            fs.createReadStream(response[0].filename).pipe(res)
+          }).fail(function(err) {
+            console.error(err)
+          })
+        }
+        else {
+          //File cannot be recreated
+        }
+      }).fail(function(err) {
+        console.error(err)
+      })
     }
     else {
       console.log(2)
     }
-  }).fail(function(error) {
-    console.log(error)
+  }).fail(function(err) {
+    console.log(err)
   })
 })
 

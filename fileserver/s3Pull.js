@@ -28,7 +28,7 @@ function getChunk(chunkPathWithOffset) {
     else {
       chunkPathWithOffset.file.write(chunkPathWithOffset.offset, Buffer.from(data))
       deferred.resolve({
-        'file': chunkPathWithOffset.file.filename,
+        'filename': chunkPathWithOffset.file.filename,
         'status': 200
       })
     }
@@ -54,15 +54,20 @@ module.exports = {
     })
     return deferred.promise
   },
-  pullFromS3: function pullFromS3(fileId) {
+  pullChunkPathFileFromS3: function pullChunkFilePathFromS3(fileId){
+    var deferred = q.defer()
     S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
-          if (err) {
-            console.error(err)
-          }
-          chunkPaths = data.Body.toString().split(',')
+      if (err) {
+        deferred.reject(err)
+      }
+      chunkPaths = data.Body.toString().split(',')
+      deferred.resolve(chunkPaths)
+    })
+    return deferred.promise
+  },
+  pullFromS3: function pullFromS3(fileId,chunkPaths) {
           chunkPathsWithOffset = []
-          //Dynamic path calculation to be added here
-          var rAF = randomAccessFile("uploads/nesfile.txt")
+          var rAF = randomAccessFile(fileId + ".txt")
           for (var i = 0; i < chunkPaths.length; i++) {
             chunkPathsWithOffset.push({
               path: chunkPaths[i],
@@ -71,11 +76,10 @@ module.exports = {
             })
           }
           if (chunkPaths.length > 0) {
-            return q.all(chunkPathWithOffset.map(getChunk))
+            return q.all(chunkPathsWithOffset.map(getChunk))
           }
           else {
             return null
           }
-        })
   }
 }
