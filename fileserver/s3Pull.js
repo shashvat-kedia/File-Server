@@ -49,7 +49,7 @@ function getChunk(chunkPathWithOffset) {
       }).send()
     }
     else {
-      console.log("Redis cache hit")
+      console.log("Redis Chunk cache hit " + chunkPathWithOffset.path)
       deferred.resolve({
         'data': result,
         'offset': chunkPathWithOffset.offset,
@@ -62,7 +62,7 @@ function getChunk(chunkPathWithOffset) {
 
 function getFileMetadata(key) {
   var deferred = q.defer()
-  redisClient.get(key, function(err, result) {
+  redisClient.get(key + "-metadata", function(err, result) {
     if (err) {
       console.error(err)
       deferred.reject(err)
@@ -78,7 +78,7 @@ function getFileMetadata(key) {
           deferred.reject(err)
         }
         else {
-          redisClient.set(key, JSON.stringify(metadata))
+          redisClient.set(key + "-metadata", JSON.stringify(metadata))
           deferred.resolve(metadata)
         }
       })
@@ -109,21 +109,38 @@ module.exports = {
     var deferred = q.defer()
     getFileMetadata("/uploads/files/" + fileId + ".txt").then(function(response) {
       if (response != null) {
-        S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
+        redisClient.get("/uploads/files/" + fileId + ".txt", function(err, result) {
           if (err) {
+            console.error(err)
             deferred.reject(err)
           }
-          chunkPaths = data.Body.toString().split(',')
-          if (chunkPaths.length > 1) { //1 Because the first element signifies the file extension
-            deferred.resolve({
-              "status": 200,
-              "chunkPaths": chunkPaths
+          else if (result == null) {
+            S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
+              if (err) {
+                console.error(err)
+                deferred.reject(err)
+              }
+              chunkPaths = data.Body.toString().split(',')
+              if (chunkPaths.length > 1) { //1 Because the first element signifies the file extension
+                redisClient.set("/uploads/files/" + fileId + ".txt", data.Body.toString())
+                deferred.resolve({
+                  "status": 200,
+                  "chunkPaths": chunkPaths
+                })
+              }
+              else {
+                deferred.resolve({
+                  "status": 422,
+                  "message": "File broken"
+                })
+              }
             })
           }
           else {
+            console.log("Redis cache hit")
             deferred.resolve({
-              "status": 422,
-              "message": "File broken"
+              "status": 200,
+              "chunkPaths": result.split(',')
             })
           }
         })
