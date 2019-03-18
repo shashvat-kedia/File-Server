@@ -6,7 +6,9 @@ const fs = require('fs');
 const multer = require('multer');
 const uploader = multer({ dest: '/uploads' });
 const config = require('./config.js');
+const s3Pull = require('./s3Pull.js');
 const amqp = require('amqplib/callback_api');
+const hash = require('object-hash');
 const app = express();
 
 var rmq_connection = null
@@ -21,8 +23,12 @@ app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
 
+function getTimestamp() {
+  return Math.round((new Date()).getTime()) / 1000
+}
+
 function getTimestampToAppend(req) {
-  return "[" + Math.round((new Date()).getTime()) / 1000 + "] - " + req.body.content
+  return "[" + getTimestamp() + "] - " + req.body.content
 }
 
 function getDate() {
@@ -169,15 +175,9 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
-app.get("/pull/:socketId/:fileId", function(req, res) {
-  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-    action: config.ACTION_PULL_FILE,
-    socketId: req.params.socketId,
-    fileId: req.params.fileId
-  }))
-  res.status(307).json({
-    "message": "Data stream starting"
-  })
+app.get("/pull/:fileId", function(req, res) {
+  var a = s3Pull.pullFromS3(req.params.fileId)
+  console.log(a)
 })
 
 app.use("*", function(req, res) {

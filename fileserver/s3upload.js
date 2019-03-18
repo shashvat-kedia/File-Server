@@ -7,6 +7,7 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
+const q = require('q');
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
@@ -68,12 +69,7 @@ function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
-      if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
-        sendToS3(jsonMessage.destPath)
-      }
-      else {
-        pullFromS3(getS3ParamsForPull(jsonMessage.fileId), jsonMessage.socketId)
-      }
+      sendToS3(jsonMessage.destPath)
     }, { noAck: true })
   }
   catch (exception) {
@@ -85,12 +81,6 @@ function getS3Params(body, key) {
   var s3_params = config.S3_CONFIG
   s3_params["Body"] = body
   s3_params["Key"] = key
-  return s3_params
-}
-
-function getS3ParamsForPull(fileId) {
-  s3_params = config.S3_CONFIG
-  s3_params["Key"] = "/uploads/files/" + fileId + ".txt"
   return s3_params
 }
 
@@ -106,34 +96,10 @@ function uploadToS3(s3_params, chunk_hash) {
   })
 }
 
-function fileExistsOnS3(s3_params) {
-  S3.headObject(s3_params, function(err, metadata) {
-    if (err && err.code == 'Not Found') {
-      console.log(err)
-      return false
-    }
-    console.log(metadata)
-    return true
-  })
-}
-
-function pullFromS3(s3_params, socketId) {
-  if (fileExistsOnS3(s3_params)) {
-    S3.getObject(s3_params, function(err, data) {
-      if (err) {
-        console.error(err)
-      }
-      console.log(data)
-    })
-  }
-  else {
-  }
-}
-
 function sendToS3(path) {
   chunk_paths = []
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
-  var file_path = "files/" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  var file_path = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {
     var chunk_hash = hash(chunk)
     var chunk_path = "/chunks/" + chunk_hash + ".txt"
