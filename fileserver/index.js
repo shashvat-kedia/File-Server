@@ -172,8 +172,8 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 app.get("/pull/:socketId/:fileId", function(req, res) {
   publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
     action: config.ACTION_PULL_FILE,
-    socketId: res.params.socketId,
-    fileId: res.params.fileId
+    socketId: req.params.socketId,
+    fileId: req.params.fileId
   }))
   res.status(307).json({
     "message": "Data stream starting"

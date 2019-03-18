@@ -122,23 +122,11 @@ function pullFromS3(s3_params, socketId) {
     S3.getObject(s3_params, function(err, data) {
       if (err) {
         console.error(err)
-        socket.emit("data", JSON.stringify({
-          'status': 500,
-          'message': "Internal Server Error"
-        }))
       }
-      //Have to test weather file can be streamed to the cient or not
-      var stream = ss.createStream()
-      var buf = new Buffer(data, 'txt')
-      ss(socket).emit('data', stream)
-      stream.pipe(fc.createReadStream(buf))
+      console.log(data)
     })
   }
   else {
-    socketId.emit("data", JSON.stringify({
-      'status': 404,
-      'message': "Not found"
-    }))
   }
 }
 
