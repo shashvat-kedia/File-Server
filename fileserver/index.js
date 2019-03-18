@@ -215,14 +215,18 @@ app.get("/pull/:fileId", function(req, res) {
           })
         }
         else {
-          //File cannot be recreated
+          res.status(422).json({
+            "message": "Broken file"
+          })
         }
       }).fail(function(err) {
         console.error(err)
       })
     }
     else {
-      //File not found
+      res.status(404).json({
+        "message": "File Not Found"
+      })
     }
   }).fail(function(err) {
     console.log(err)
