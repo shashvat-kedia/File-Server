@@ -2,3 +2,4 @@ fileserver/node_modules/
 fileserver/config.js
 fileserver/uploads
 fileserver/files
+fileserver/*.rdb

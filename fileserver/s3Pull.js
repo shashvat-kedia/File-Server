@@ -4,8 +4,18 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const hash = require('object-hash');
 const q = require('q');
+const redis = require('redis');
+const redisClient = redis.createClient();
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
+
+redisClient.on('connect', function() {
+  console.log("Redis client connected")
+})
+
+redisClient.on('error', function(err) {
+  console.error(err)
+})
 
 function getS3ParamsForPull(path) {
   s3_params = config.S3_CONFIG
@@ -15,21 +25,38 @@ function getS3ParamsForPull(path) {
 
 function getChunk(chunkPathWithOffset) {
   var deferred = q.defer()
-  var data = ""
-  S3.getObject(getS3ParamsForPull(chunkPathWithOffset.path)).on('httpData', function(chunk) {
-    data += chunk.toString()
-  }).on('httpDone', function(response) {
-    if (response.error) {
+  redisClient.get(chunkPathWithOffset.path, function(err, result) {
+    if (err) {
+      console.error(err)
       deferred.reject(response.error)
     }
+    else if (result == null) {
+      var data = ""
+      S3.getObject(getS3ParamsForPull(chunkPathWithOffset.path)).on('httpData', function(chunk) {
+        data += chunk.toString()
+      }).on('httpDone', function(response) {
+        if (response.error) {
+          deferred.reject(response.error)
+        }
+        else {
+          redisClient.set(chunkPathWithOffset.path, data)
+          deferred.resolve({
+            'data': data,
+            'offset': chunkPathWithOffset.offset,
+            'status': 200
+          })
+        }
+      }).send()
+    }
     else {
+      console.log("Redis cache hit")
       deferred.resolve({
-        'data': data,
+        'data': result,
         'offset': chunkPathWithOffset.offset,
         'status': 200
       })
     }
-  }).send()
+  })
   return deferred.promise
 }
 
