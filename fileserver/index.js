@@ -178,13 +178,11 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
-//Multithreaded download to be supported here
-
 app.head("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      s3Pull.getFileLength(response.chunkPaths[response.chunkPaths.length - 1]).then(function(contentLength) {
-        if (contentLength < 0) {
+      s3Pull.getFileLength(response.chunkPaths[response.chunkPaths.length - 1]).then(function(contentLengthLastChunk) {
+        if (contentLengthLastChunk < 0) {
           res.status(422).json({
             "message": "File broken"
           })
@@ -192,7 +190,7 @@ app.head("/pull/:fileId", function(req, res) {
         else {
           res.set({
             "Accept-Ranges": "bytes",
-            "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLength,
+            "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLengthLastChunk,
           })
           res.end()
         }
@@ -211,8 +209,21 @@ app.head("/pull/:fileId", function(req, res) {
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
+      var lastByte = -1
+      var chunksToPull = []
+      if (req.headers["range"] != null) {
+        var rangeHeader = req.headers["range"]
+        var firstByte = int(rangeHeader.substring(rangeHeader.indexOf('='), rangeHeader.indexOf('-')))
+        if (!rangeHeader[rangeHeder.length - 1] == '-') {
+          lastByte = int(rangeHeader.substring(rangeHeader.indexOf('-'), rangeHeader.length))
+        }
+      }
+      else {
+        chunksToPull = response.chunkPaths.slice(1, response.length)
+      }
       var rAF = randomAccessFile(req.params.fileId + response.chunkPaths[0])
-      s3Pull.pullChunkFromS3(response.chunkPaths.slice(1, response.length)).then(function(response) {
+      s3Pull.pullChunkFromS3(chunksToPull).then(function(response) {
+        var fileExists = false;
         for (var j = 0; j < response.length; j++) {
           if (response[j].status != 200) {
             res.status(422).json({
@@ -221,11 +232,12 @@ app.get("/pull/:fileId", function(req, res) {
             return
           }
           else {
-            if (!fs.existsSync(rAF.filename)) {
+            if (!fileExists && !fs.existsSync(rAF.filename)) {
               fs.writeFileSync(rAF.filename, "", function(err) {
                 if (err) {
                   console.error(err)
                 }
+                fileExists = true;
               })
             }
             rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
