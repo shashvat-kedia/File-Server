@@ -1,2 +1,2 @@
 # File-Server
-File Server using Docker, Nginx and NodeJS
+File Server using NodeJS
