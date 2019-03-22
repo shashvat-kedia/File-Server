@@ -209,14 +209,18 @@ app.head("/pull/:fileId", function(req, res) {
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      var lastByte = -1
+      var lastPos = response.length
       var chunksToPull = []
       if (req.headers["range"] != null) {
         var rangeHeader = req.headers["range"]
-        var firstByte = int(rangeHeader.substring(rangeHeader.indexOf('='), rangeHeader.indexOf('-')))
+        var firstPos = Math.floor(int(rangeHeader.substring(rangeHeader.indexOf('='), rangeHeader.indexOf('-'))) / config.READ_CHUNKSIZE)
         if (!rangeHeader[rangeHeder.length - 1] == '-') {
-          lastByte = int(rangeHeader.substring(rangeHeader.indexOf('-'), rangeHeader.length))
+          lastPos = Math.ceil(int(rangeHeader.substring(rangeHeader.indexOf('-'), rangeHeader.length)) / config.READ_CHUNKSIZE)
         }
+        for (var i = firstPos; i <= lastPos; i++) {
+          chunksToPull.push(response.chunkPaths[i])
+        }
+        //Multi threaded support to be added here
       }
       else {
         chunksToPull = response.chunkPaths.slice(1, response.length)
