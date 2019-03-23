@@ -10,6 +10,7 @@ const s3Pull = require('./s3Pull.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const randomAccessFile = require('random-access-file');
+const mime = require('mime-types');
 const app = express();
 
 var rmq_connection = null
@@ -89,17 +90,19 @@ function startPublisher() {
 }
 
 function publish(queueName, content) {
-  try {
-    pub_channel.assertQueue(queueName, { durable: false })
-    pub_channel.sendToQueue(queueName, new Buffer(content))
-    console.log("Message published to RMQ")
-  }
-  catch (exception) {
-    console.error("Publisher Exception:- " + exception.message)
-    offlinePubQueue.push({
-      content: content,
-      queueName: queueName
-    })
+  if (pub_channel != null) {
+    try {
+      pub_channel.assertQueue(queueName, { durable: false })
+      pub_channel.sendToQueue(queueName, new Buffer(content))
+      console.log("Message published to RMQ")
+    }
+    catch (exception) {
+      console.error("Publisher Exception:- " + exception.message)
+      offlinePubQueue.push({
+        content: content,
+        queueName: queueName
+      })
+    }
   }
 }
 
@@ -169,13 +172,15 @@ app.post("/upload", uploader.single("file"), function(req, res) {
     res.send({
       "message": "File upload successfull"
     })
-    if (pub_channel != null) {
-      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-        action: config.ACTION_UPLOAD_FILE,
-        destPath: destPath
-      }))
-    }
+    publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+      action: config.ACTION_UPLOAD_FILE,
+      destPath: destPath
+    }))
   })
+})
+
+app.delete("/delete/:fileId", function(req, res) {
+  s3.getFileMetadata(req.params.file)
 })
 
 app.head("/pull/:fileId", function(req, res) {
@@ -190,6 +195,7 @@ app.head("/pull/:fileId", function(req, res) {
         else {
           res.set({
             "Accept-Ranges": "bytes",
+            "Content-Type": mime.lookup(response.chunkPaths[0]),
             "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLengthLastChunk,
           })
           res.end()

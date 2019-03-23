@@ -93,6 +93,7 @@ function getFileMetadata(key) {
 }
 
 module.exports = {
+  getFileMetadata: getFileMetadata,
   getFileLength: function getFileLength(key) {
     var deferred = q.defer()
     getFileMetadata(key).then(function(response) {
