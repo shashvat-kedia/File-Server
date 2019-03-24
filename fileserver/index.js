@@ -225,7 +225,7 @@ app.put("/update/:fileId", function(req, res) {
 })
 
 app.get("/chunk/:fileId/:chunkId", function(req, res) {
-  s3Pull.pullChunkFileFromS3(req.params.fileId).then(function(response) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       var chunkIndex = -1;
       for (var i = 0; i < response.chunkPaths.length; i++) {
@@ -235,8 +235,8 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
           break;
         }
       }
-      if (isChunkPresent != -1) {
-        pullChunk(res, [response.chunkPaths[i]], randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
+      if (chunkIndex != -1) {
+        pullChunk(res, [response.chunkPaths[chunkIndex]], randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
       }
       else {
         res.status(404).json({
@@ -249,7 +249,7 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
         "message": response.message
       })
     }
-  }).error(function(err) {
+  }).fail(function(err) {
     console.error(err)
   })
 })
