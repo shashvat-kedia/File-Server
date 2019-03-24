@@ -106,6 +106,46 @@ function publish(queueName, content) {
   }
 }
 
+function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
+  s3Pull.pullChunkFromS3(chunksToPull).then(function(response) {
+    for (var j = 0; j < response.length; j++) {
+      if (response[j].status != 200) {
+        console.log("Error")
+        res.status(422).json({
+          "message": "File broken"
+        })
+        return
+      }
+      else {
+        if (!fs.existsSync(rAF.filename)) {
+          fs.writeFileSync(rAF.filename, "")
+        }
+        rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
+          if (err) {
+            console.error(err)
+          }
+          if (j >= response.length - 1) {
+            if (firstByte == -1) {
+              res.statusCode = 200
+              fs.createReadStream(rAF.filename).pipe(res)
+            }
+            else {
+              res.statusCode = 206
+              fs.createReadStream(rAF.filename, {
+                start: firstByte,
+                end: lastByte == -1 ? Infinity : parseInt(lastByte, 10)
+              }).pipe(res)
+            }
+            fs.unlinkSync(rAF.filename)
+          }
+        })
+      }
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+}
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] == config.API_KEY) {
     next()
@@ -179,8 +219,39 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
-app.delete("/delete/:fileId", function(req, res) {
-  s3.getFileMetadata(req.params.file)
+//Update to be added here
+app.put("/update/:fileId", function(req, res) {
+
+})
+
+app.get("/chunk/:fileId/:chunkId", function(req, res) {
+  s3Pull.pullChunkFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      var chunkIndex = -1;
+      for (var i = 0; i < response.chunkPaths.length; i++) {
+        var chunkPath = response.chunkPaths[i]
+        if (chunkPath.substring(chunkPath.lastIndexOf('/') + 1, chunkPath.indexOf('.')) == req.params.chunkId) {
+          chunkIndex = i;
+          break;
+        }
+      }
+      if (isChunkPresent != -1) {
+        pullChunk(res, [response.chunkPaths[i]], randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
+      }
+      else {
+        res.status(404).json({
+          "message": "Chunk not found"
+        })
+      }
+    }
+    else {
+      res.status(response.status).json({
+        "message": response.message
+      })
+    }
+  }).error(function(err) {
+    console.error(err)
+  })
 })
 
 app.head("/pull/:fileId", function(req, res) {
@@ -217,22 +288,24 @@ app.head("/pull/:fileId", function(req, res) {
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
+      console.log(response.chunkPaths)
       var lastPos = response.chunkPaths.length - 1
       var chunksToPull = []
-      var firstByte = rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-'))
+      var firstByte = -1
       var lastByte = -1
       if (req.headers["range"] != null) {
         var rangeHeader = req.headers["range"]
+        firstByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-')), 10)
         var firstPos = Math.floor(firstByte / config.READ_CHUNKSIZE) + 1
         if (!(rangeHeader[rangeHeader.length - 1] == '-')) {
-          lastByte = rangeHeader.substring(rangeHeader.indexOf('-') + 1, rangeHeader.length)
+          lastByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('-') + 1, rangeHeader.length), 10)
           lastPos = Math.ceil(lastByte / config.READ_CHUNKSIZE)
         }
         for (var i = firstPos; i <= lastPos; i++) {
           chunksToPull.push(response.chunkPaths[i])
         }
         if (lastByte != -1 && lastByte < firstByte) {
-          res.json(422).json({
+          res.status(422).json({
             "message": "Invalid range request"
           })
           return
@@ -242,44 +315,7 @@ app.get("/pull/:fileId", function(req, res) {
       else {
         chunksToPull = response.chunkPaths.slice(1, response.length)
       }
-      var rAF = randomAccessFile(req.params.fileId + response.chunkPaths[0])
-      s3Pull.pullChunkFromS3(chunksToPull).then(function(response) {
-        for (var j = 0; j < response.length; j++) {
-          if (response[j].status != 200) {
-            console.log("Error")
-            res.status(422).json({
-              "message": "File broken"
-            })
-            return
-          }
-          else {
-            if (!fs.existsSync(rAF.filename)) {
-              fs.writeFileSync(rAF.filename, "")
-            }
-            rAF.write(response[j].offset, Buffer.from(response[j].data), function(err) {
-              if (err) {
-                console.error(err)
-              }
-              if (j >= response.length - 1) {
-                if (firstByte == -1) {
-                  res.statusCode = 200
-                  fs.createReadStream(rAF.filename).pipe(res)
-                }
-                else {
-                  res.statusCode = 206
-                  fs.createReadStream(rAF.filename, {
-                    start: firstByte,
-                    end: lastByte == -1 ? Infinity : parseInt(lastByte, 10)
-                  }).pipe(res)
-                }
-                fs.unlinkSync(rAF.filename)
-              }
-            })
-          }
-        }
-      }).fail(function(err) {
-        console.error(err)
-      })
+      pullChunk(res, chunksToPull, randomAccessFile(req.params.fileId + response.chunkPaths[0]), firstByte, lastByte)
     }
     else {
       res.status(response.status).json({

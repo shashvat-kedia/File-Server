@@ -65,11 +65,12 @@ function startConsumer() {
 }
 
 function consume() {
+  //Enable acknolwgements here to ensure reliability and fault tolerence
   try {
     con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
       sendToS3(jsonMessage.destPath)
-    }, { noAck: true })
+    })
   }
   catch (exception) {
     console.error("Consumer Exception:- " + exception.message)
