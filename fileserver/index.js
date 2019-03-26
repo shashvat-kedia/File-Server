@@ -224,6 +224,11 @@ app.put("/update/:fileId", function(req, res) {
 
 })
 
+//Delete to be added here
+app.delete("/delete/:fileId", function(req, res) {
+
+})
+
 app.get("/chunk/:fileId/:chunkId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
@@ -236,7 +241,8 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
         }
       }
       if (chunkIndex != -1) {
-        pullChunk(res, [response.chunkPaths[chunkIndex]], randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
+        pullChunk(res, [response.chunkPaths[chunkIndex]],
+          randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
       }
       else {
         res.status(404).json({
@@ -315,7 +321,8 @@ app.get("/pull/:fileId", function(req, res) {
       else {
         chunksToPull = response.chunkPaths.slice(1, response.length)
       }
-      pullChunk(res, chunksToPull, randomAccessFile(req.params.fileId + response.chunkPaths[0]), firstByte, lastByte)
+      pullChunk(res, chunksToPull,
+        randomAccessFile(req.params.fileId + response.chunkPaths[0]), firstByte, lastByte)
     }
     else {
       res.status(response.status).json({
