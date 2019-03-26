@@ -219,12 +219,10 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   })
 })
 
-//Update to be added here
 app.put("/update/:fileId", function(req, res) {
 
 })
 
-//Delete to be added here
 app.delete("/delete/:fileId", function(req, res) {
 
 })
@@ -274,6 +272,8 @@ app.head("/pull/:fileId", function(req, res) {
             "Accept-Ranges": "bytes",
             "Content-Type": mime.lookup(response.chunkPaths[0]),
             "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLengthLastChunk,
+            "ETag": response.etag,
+            "LatsModified": response.lastModified
           })
           res.end()
         }

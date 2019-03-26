@@ -122,10 +122,12 @@ module.exports = {
                 deferred.reject(err)
               }
               chunkPaths = data.Body.toString().split(',')
-              if (chunkPaths.length > 1) { //1 Because the first element signifies the file extension
+              if (chunkPaths.length > 1) {
                 redisClient.set("/uploads/files/" + fileId + ".txt", data.Body.toString())
                 deferred.resolve({
                   "status": 200,
+                  "etag": data.ETag,
+                  "lastModified": data.LastModified,
                   "chunkPaths": chunkPaths
                 })
               }
