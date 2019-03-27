@@ -195,7 +195,7 @@ function sendToS3(path) {
         console.log("File uploaded")
       }
     }).fail(function(err) {
-      consol.error(err)
+      console.error(err)
     })
   }).fail(function(err) {
     console.error(err)
@@ -203,7 +203,7 @@ function sendToS3(path) {
 }
 
 function updateFile(path, fileId) {
-  s3Upload.pullChunkPathFileFromS3(fileId).then(function(response) {
+  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
     if (response.status == 200) {
       createChunksAndProcess(path, false).then(function(data) {
         var chunksPaths = []

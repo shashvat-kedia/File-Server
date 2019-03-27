@@ -218,7 +218,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 })
 
 app.put("/update/:fileId", function(req, res) {
-  var filePath = getFileFromRequest(req)
+  var destPath = getFileFromRequest(req)
   res.statusCode = 200
   res.send({
     "message": "File updated"
