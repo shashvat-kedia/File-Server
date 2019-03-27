@@ -7,8 +7,8 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
-const s3Pull = require('./s3Pull.js');
 const q = require('q');
+const s3Pull = require('./s3Pull.js');
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
@@ -127,6 +127,37 @@ function createChunksAndProcess(path, isUpload) {
   return deferred.promise
 }
 
+function search(oldChunkPaths, pathToFind) {
+  for (var i = 0; i < oldChunkPaths.length; i++) {
+    if (oldChunkPaths[i] == pathToFind) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function compare(oldChunkPaths, newChunkPaths) {
+  var chunkPaths = []
+  var chunksToUpload = []
+  for (var i = 0; i < newChunkPaths.length; i++) {
+    chunkPaths.push(newChunkPaths[i])
+    var isPresent = search(oldChunkPaths, newChunksPaths[i])
+    if (!isPresent) {
+      chunksToUpload.push({
+        index: i,
+        chunksPath: newChunkPaths[i],
+        chunkHash: newChunkPaths[i].substring(newChunksPaths[i].lastIndexOf('/') + 1,
+          newChunksPaths[i].lastIndexOf('.'))
+      })
+    }
+  }
+  return {
+    chunkPaths: chunksPaths,
+    chunksToUpload: chunksToUpload
+  }
+}
+
+//Fix callback issue
 function uploadSpecificChunks(path, chunksToUpload) {
   var countSuccess = 0
   var deferred = q.defer()
@@ -149,6 +180,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
         else {
           data = buffer
         }
+        data = data.toString()
         uploadToS3(getS3Params(data, chunksToUpload[i].chunkPath), chunksToUpload[i].chunkHash)
         countSuccess += 1
       })
@@ -206,23 +238,11 @@ function updateFile(path, fileId) {
   s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
     if (response.status == 200) {
       createChunksAndProcess(path, false).then(function(data) {
-        var chunksPaths = []
-        var chunksToUpload = []
-        for (var i = 0; i < data.chunkPaths.length; i++) {
-          chunkPaths.push(data.chunksPaths[i])
-          if (data.chunkPaths[i] != response.chunksPaths[i]) {
-            chunkToUpload.push({
-              index: i,
-              chunksPath: data.chunkPaths[i],
-              chunkHash: data.chunkPaths[i].substring(data.chunksPaths[i].lastIndexOf('/') + 1,
-                data.chunksPaths[i].lastIndexOf('.'))
-            })
-          }
-        }
-        uploadSpecificChunks(path, chunksToUpload).then(function(response) {
+        var opRes = compare(response.chunksPaths, data.chunksPaths)
+        uploadSpecificChunks(path, opRes.chunksToUpload).then(function(response) {
           if (response.status = 200) {
             console.log("Chunks updated")
-            uploadChunkPathFile(path, chunkPaths).then(function(response) {
+            uploadChunkPathFile(path, opRes.chunkPaths).then(function(response) {
               if (response.status = 200) {
                 console.log("File updated")
               }
