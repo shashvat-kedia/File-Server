@@ -7,6 +7,8 @@ const AWS = require('aws-sdk');
 const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
+const s3Pull = require('./s3Pull.js');
+const q = require('q');
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
@@ -73,7 +75,7 @@ function consume() {
         sendToS3(jsonMessage.destPath)
       }
       else {
-        updateFile(jsonMessage.destPath)
+        updateFile(jsonMessage.destPath, jsonMessage.fileId)
       }
     })
   }
@@ -101,33 +103,61 @@ function uploadToS3(s3_params, chunk_hash) {
   })
 }
 
-function sendToS3(path) {
-  chunk_paths = [path.substring(path.lastIndexOf('.'), path.length)]
+function createChunksAndProcess(path, isUpload) {
+  var deferred = q.defer()
+  chunkPaths = [path.substring(path.lastIndexOf('.'), path.length)]
   var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
-  var file_path = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
   readStream.on('data', function(chunk) {
-    var chunk_hash = hash(chunk)
-    var chunk_path = "/chunks/" + chunk_hash + ".txt"
-    chunk_paths.push(chunk_path)
-    uploadToS3(getS3Params(chunk, chunk_path), chunk_hash)
+    var chunkHash = hash(chunk)
+    var chunkPath = "/chunks/" + chunkHash + ".txt"
+    chunkPaths.push(chunkPath)
+    if (isUpload) {
+      uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
+    }
   })
-  readStream.on('close', function() {
+  readStream.on('close', function(err) {
+    if (err) {
+      console.error(err)
+      deferred.reject(err)
+    }
+    deferred.resolve({
+      "chunkPaths": chunkPaths
+    })
+  })
+  return deferred.promise
+}
+
+function sendToS3(path) {
+  var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  createChunksAndProcess(path, true).then(function(response) {
     fs.unlinkSync(path)
-    fs.writeFile(file_path, chunk_paths.toString(), function(err) {
+    fs.writeFile(filePath, response.chunkPaths.toString(), function(err) {
       if (err) {
         console.error(err)
       }
       else {
-        uploadToS3(getS3Params(fs.createReadStream(file_path),
-          "/uploads/files/" + file_path), "Chunk hash path file upload")
-        fs.unlinkSync(file_path)
+        uploadToS3(getS3Params(fs.createReadStream(filePath),
+          "/uploads/files/" + filePath), "Chunk hash path file upload")
+        fs.unlinkSync(filePath)
       }
     })
+  }).fail(function(err) {
+    console.error(err)
   })
 }
 
-function updateFile(path) {
+function updateFile(path, fileId) {
+  s3Upload.pullChunkPathFileFromS3(fileId).then(function(response) {
+    if (response.status == 200) {
 
+    }
+    else {
+      //Storing them for the time being
+      sendToS3(path)
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
 }
 
 app.listen(PORT, function() {

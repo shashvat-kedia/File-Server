@@ -225,7 +225,8 @@ app.put("/update/:fileId", function(req, res) {
   })
   publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
     action: config.ACTION_UPDATE_FILE,
-    destPath: destPath
+    destPath: destPath,
+    fileId: req.params.fileId
   }))
 })
 
