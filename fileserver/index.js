@@ -106,6 +106,13 @@ function publish(queueName, content) {
   }
 }
 
+function getFileFromRequest(req) {
+  const tempPath = req.file.path
+  const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime()) / 1000 + "." + req.body.format);
+  fs.renameSync(tempPath, destPath)
+  return destPath
+}
+
 function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
   s3Pull.pullChunkFromS3(chunksToPull).then(function(response) {
     for (var j = 0; j < response.length; j++) {
@@ -199,28 +206,27 @@ app.post("/text", function(req, res) {
 })
 
 app.post("/upload", uploader.single("file"), function(req, res) {
-  const tempPath = req.file.path
-  const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime()) / 1000 + "." + req.body.format);
-  fs.rename(tempPath, destPath, function(err) {
-    if (err) {
-      console.error(err)
-      res.status(500).send({
-        "message": "Internal server error"
-      })
-    }
-    res.statusCode = 200
-    res.send({
-      "message": "File upload successfull"
-    })
-    publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-      action: config.ACTION_UPLOAD_FILE,
-      destPath: destPath
-    }))
+  var destPath = getFileFromRequest(req)
+  res.statusCode = 200
+  res.send({
+    "message": "File upload successfull"
   })
+  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+    action: config.ACTION_UPLOAD_FILE,
+    destPath: destPath
+  }))
 })
 
 app.put("/update/:fileId", function(req, res) {
-
+  var filePath = getFileFromRequest(req)
+  res.statusCode = 200
+  res.send({
+    "message": "File updated"
+  })
+  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+    action: config.ACTION_UPDATE_FILE,
+    destPath: destPath
+  }))
 })
 
 app.delete("/delete/:fileId", function(req, res) {
@@ -273,7 +279,8 @@ app.head("/pull/:fileId", function(req, res) {
             "Content-Type": mime.lookup(response.chunkPaths[0]),
             "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLengthLastChunk,
             "ETag": response.etag,
-            "LatsModified": response.lastModified
+            "LastModified": response.lastModified,
+            "Connection": "close"
           })
           res.end()
         }

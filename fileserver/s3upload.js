@@ -69,7 +69,12 @@ function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
-      sendToS3(jsonMessage.destPath)
+      if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
+        sendToS3(jsonMessage.destPath)
+      }
+      else {
+        updateFile(jsonMessage.destPath)
+      }
     })
   }
   catch (exception) {
@@ -119,6 +124,10 @@ function sendToS3(path) {
       }
     })
   })
+}
+
+function updateFile(path) {
+
 }
 
 app.listen(PORT, function() {
