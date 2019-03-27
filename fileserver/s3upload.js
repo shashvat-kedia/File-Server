@@ -127,19 +127,75 @@ function createChunksAndProcess(path, isUpload) {
   return deferred.promise
 }
 
-function sendToS3(path) {
+function uploadSpecificChunks(path, chunksToUpload) {
+  var countSuccess = 0
+  var deferred = q.defer()
+  fs.open(path, 'r', function(err, fd) {
+    if (err) {
+      console.error(err)
+      deferred.reject(err)
+    }
+    for (var i = 0; i < chunksToUpload.length; i++) {
+      var buffer = new Buffer(config.READ_CHUNKSIZE)
+      fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunksToUpload[i].index * config.READ_CHUNKSIZE, function(err, nread) {
+        if (err) {
+          console.error(err)
+          deferred.reject(err)
+        }
+        var data
+        if (nread < config.READ_CHUNKSIZE) {
+          data = buffer.slice(0, nread)
+        }
+        else {
+          data = buffer
+        }
+        uploadToS3(getS3Params(data, chunksToUpload[i].chunkPath), chunksToUpload[i].chunkHash)
+        countSuccess += 1
+      })
+    }
+    if (countSuccess == chunksToUpload.length) {
+      deferred.resolve({
+        "status": 200
+      })
+    }
+    else {
+      deferred.resolve({
+        "status": 404
+      })
+    }
+  })
+}
+
+function uploadChunkPathFile(path, chunkPaths) {
+  var deferred = q.defer()
   var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  fs.unlinkSync(path)
+  fs.writeFile(filePath, chunkPaths.toString(), function(err) {
+    if (err) {
+      console.error(err)
+      deferred.reject(err)
+    }
+    else {
+      uploadToS3(getS3Params(fs.createReadStream(filePath),
+        "/uploads/files/" + filePath), "Chunk hash path file upload")
+      fs.unlinkSync(filePath)
+      deferred.resolve({
+        "status": 200
+      })
+    }
+  })
+}
+
+function sendToS3(path) {
   createChunksAndProcess(path, true).then(function(response) {
-    fs.unlinkSync(path)
-    fs.writeFile(filePath, response.chunkPaths.toString(), function(err) {
-      if (err) {
-        console.error(err)
+    uploadChunkPathFile(path, response.chunksPaths).then(function(response) {
+      if (respone.status == 200) {
+        //Message acknolegements can be sent here but have to take into account timout so that any
+        //message is not processed twice
+        console.log("File uploaded")
       }
-      else {
-        uploadToS3(getS3Params(fs.createReadStream(filePath),
-          "/uploads/files/" + filePath), "Chunk hash path file upload")
-        fs.unlinkSync(filePath)
-      }
+    }).fail(function(err) {
+      consol.error(err)
     })
   }).fail(function(err) {
     console.error(err)
@@ -149,7 +205,41 @@ function sendToS3(path) {
 function updateFile(path, fileId) {
   s3Upload.pullChunkPathFileFromS3(fileId).then(function(response) {
     if (response.status == 200) {
-
+      createChunksAndProcess(path, false).then(function(data) {
+        var chunksPaths = []
+        var chunksToUpload = []
+        for (var i = 0; i < data.chunkPaths.length; i++) {
+          chunkPaths.push(data.chunksPaths[i])
+          if (data.chunkPaths[i] != response.chunksPaths[i]) {
+            chunkToUpload.push({
+              index: i,
+              chunksPath: data.chunkPaths[i],
+              chunkHash: data.chunkPaths[i].substring(data.chunksPaths[i].lastIndexOf('/') + 1,
+                data.chunksPaths[i].lastIndexOf('.'))
+            })
+          }
+        }
+        uploadSpecificChunks(path, chunksToUpload).then(function(response) {
+          if (response.status = 200) {
+            console.log("Chunks updated")
+            uploadChunkPathFile(path, chunkPaths).then(function(response) {
+              if (response.status = 200) {
+                console.log("File updated")
+              }
+            }).fail(function(err) {
+              console.error(err)
+            })
+          }
+          else {
+            //Modify to get the chunks that could not be uploaded and they retry for certain defined no. of times
+            console.log("File not uploaded completely")
+          }
+        }).fail(function(err) {
+          console.error(err)
+        })
+      }).fail(function(err) {
+        console.error(err)
+      })
     }
     else {
       //Storing them for the time being
