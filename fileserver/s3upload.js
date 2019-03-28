@@ -157,7 +157,6 @@ function compare(oldChunkPaths, newChunkPaths) {
   }
 }
 
-//Fix callback issue
 function uploadSpecificChunks(path, chunksToUpload) {
   var countSuccess = 0
   var deferred = q.defer()
@@ -166,33 +165,47 @@ function uploadSpecificChunks(path, chunksToUpload) {
       console.error(err)
       deferred.reject(err)
     }
+    var successCounts = 0
     for (var i = 0; i < chunksToUpload.length; i++) {
-      var buffer = new Buffer(config.READ_CHUNKSIZE)
-      fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunksToUpload[i].index * config.READ_CHUNKSIZE, function(err, nread) {
-        if (err) {
-          console.error(err)
-          deferred.reject(err)
+      q.fcall(function(chunkToUpload) {
+        var deferred = q.defer()
+        var buffer = new Buffer(config.READ_CHUNKSIZE)
+        fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunksToUpload[i].index * config.READ_CHUNKSIZE, function(err, nread) {
+          if (err) {
+            console.error(err)
+            deferred.reject(err)
+          }
+          var data
+          if (nread < config.READ_CHUNKSIZE) {
+            data = buffer.slice(0, nread)
+          }
+          else {
+            data = buffer
+          }
+          data = data.toString()
+          uploadToS3(getS3Params(data, chunksToUpload[i].chunkPath), chunksToUpload[i].chunkHash)
+          deferred.resolve({
+            "status": 200
+          })
+        })
+      }, chunksToUpload[i]).then(function(response) {
+        if (response.status == 200) {
+          successCounts += 1
         }
-        var data
-        if (nread < config.READ_CHUNKSIZE) {
-          data = buffer.slice(0, nread)
+        if (i >= chunksToUpoad.length) {
+          if (successCounts == chunksToUpload.length) {
+            deferred.resolve({
+              "status": 200
+            })
+          }
+          else {
+            deferred.resolve({
+              "status": 404
+            })
+          }
         }
-        else {
-          data = buffer
-        }
-        data = data.toString()
-        uploadToS3(getS3Params(data, chunksToUpload[i].chunkPath), chunksToUpload[i].chunkHash)
-        countSuccess += 1
-      })
-    }
-    if (countSuccess == chunksToUpload.length) {
-      deferred.resolve({
-        "status": 200
-      })
-    }
-    else {
-      deferred.resolve({
-        "status": 404
+      }).fail(function(err) {
+        console.error(err)
       })
     }
   })

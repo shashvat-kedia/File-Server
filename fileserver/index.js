@@ -302,7 +302,6 @@ app.head("/pull/:fileId", function(req, res) {
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      console.log(response.chunkPaths)
       var lastPos = response.chunkPaths.length - 1
       var chunksToPull = []
       var firstByte = -1
