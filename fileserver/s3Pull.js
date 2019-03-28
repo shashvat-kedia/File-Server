@@ -93,6 +93,7 @@ function getFileMetadata(key) {
 }
 
 module.exports = {
+  getS3ParamsForPull: getS3ParamsForPull,
   getFileMetadata: getFileMetadata,
   getFileLength: function getFileLength(key) {
     var deferred = q.defer()

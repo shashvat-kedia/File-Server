@@ -84,8 +84,11 @@ function consume() {
       if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
         sendToS3(jsonMessage.destPath)
       }
-      else {
+      else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
         updateFile(jsonMessage.destPath, jsonMessage.fileId)
+      }
+      else {
+        deleteFile("/uploads/files/" + jsonMessage.fileId + ".txt")
       }
     })
   }
@@ -241,7 +244,14 @@ function uploadChunkPathFile(path, chunkPaths) {
 }
 
 function deleteFile(path) {
-
+  S3.deleteObject(s3Pull.getS3ParamsForPull(path), function(err, data) {
+    if (err) {
+      console.error(err)
+    }
+    else {
+      console.log("File deleted")
+    }
+  })
 }
 
 function sendToS3(path) {

@@ -231,7 +231,14 @@ app.put("/update/:fileId", function(req, res) {
 })
 
 app.delete("/delete/:fileId", function(req, res) {
-
+  res.statusCode = 200
+  res.send({
+    "message": "File deleted"
+  })
+  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+    action: config.ACTION_DELETE_FILE,
+    fileId: req.params.fileId
+  }))
 })
 
 app.get("/chunk/:fileId/:chunkId", function(req, res) {
