@@ -82,13 +82,13 @@ function consume() {
     con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
       if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
-        sendToS3(jsonMessage.destPath)
+        sendToS3(message, jsonMessage.destPath)
       }
       else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
-        updateFile(jsonMessage.destPath, jsonMessage.fileId)
+        updateFile(message, jsonMessage.destPath, jsonMessage.fileId)
       }
       else {
-        deleteFile("/uploads/files/" + jsonMessage.fileId + ".txt")
+        deleteFile(message, "/uploads/files/" + jsonMessage.fileId + ".txt")
       }
     })
   }
@@ -243,23 +243,25 @@ function uploadChunkPathFile(path, chunkPaths) {
   })
 }
 
-function deleteFile(path) {
+function deleteFile(message, path) {
   S3.deleteObject(s3Pull.getS3ParamsForPull(path), function(err, data) {
     if (err) {
       console.error(err)
     }
     else {
+      con_channel.ack(message)
       console.log("File deleted")
     }
   })
 }
 
-function sendToS3(path) {
+function sendToS3(message, path) {
   createChunksAndProcess(path, true).then(function(response) {
     uploadChunkPathFile(path, response.chunksPaths).then(function(response) {
       if (respone.status == 200) {
         //Message acknolegements can be sent here but have to take into account timout so that any
         //message is not processed twice
+        con_channel.ack(message)
         console.log("File uploaded")
       }
     }).fail(function(err) {
@@ -270,7 +272,7 @@ function sendToS3(path) {
   })
 }
 
-function updateFile(path, fileId) {
+function updateFile(message, path, fileId) {
   s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
     if (response.status == 200) {
       createChunksAndProcess(path, false).then(function(data) {
@@ -281,6 +283,7 @@ function updateFile(path, fileId) {
             uploadChunkPathFile(path, opRes.chunkPaths).then(function(response) {
               if (response.status = 200) {
                 redisClient.set("/uploads/files/" + fileId + ".txt", null)
+                con_channel.ack(message)
                 console.log("File updated")
               }
             }).fail(function(err) {
