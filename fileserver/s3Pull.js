@@ -106,7 +106,6 @@ module.exports = {
     })
     return deferred.promise
   },
-  //Add functionality to delete the chunk path file based on boolean parameter
   pullChunkPathFileFromS3: function pullChunkPathFileFromS3(fileId) {
     var deferred = q.defer()
     getFileMetadata("/uploads/files/" + fileId + ".txt").then(function(response) {

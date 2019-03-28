@@ -9,6 +9,8 @@ const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const q = require('q');
 const s3Pull = require('./s3Pull.js');
+const redis = require('redis');
+const redisClient = redis.createClient();
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
@@ -21,6 +23,14 @@ app.use(bodyParser.json())
 app.use(cors())
 
 const PORT = 27272 | process.env.PORT
+
+redisClient.on('connect', function() {
+  console.log("Redis client connected")
+})
+
+redisClient.on('error', function(err) {
+  console.error(err)
+})
 
 function connectToRMQ() {
   amqp.connect(config.RMQ_URL, function(err, con) {
@@ -158,7 +168,6 @@ function compare(oldChunkPaths, newChunkPaths) {
 }
 
 function uploadSpecificChunks(path, chunksToUpload) {
-  var countSuccess = 0
   var deferred = q.defer()
   fs.open(path, 'r', function(err, fd) {
     if (err) {
@@ -170,7 +179,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
       q.fcall(function(chunkToUpload) {
         var deferred = q.defer()
         var buffer = new Buffer(config.READ_CHUNKSIZE)
-        fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunksToUpload[i].index * config.READ_CHUNKSIZE, function(err, nread) {
+        fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunkToUpload.index * config.READ_CHUNKSIZE, function(err, nread) {
           if (err) {
             console.error(err)
             deferred.reject(err)
@@ -183,7 +192,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
             data = buffer
           }
           data = data.toString()
-          uploadToS3(getS3Params(data, chunksToUpload[i].chunkPath), chunksToUpload[i].chunkHash)
+          uploadToS3(getS3Params(data, chunkToUpload.chunkPath), chunkToUpload.chunkHash)
           deferred.resolve({
             "status": 200
           })
@@ -231,6 +240,10 @@ function uploadChunkPathFile(path, chunkPaths) {
   })
 }
 
+function deleteFile(path) {
+
+}
+
 function sendToS3(path) {
   createChunksAndProcess(path, true).then(function(response) {
     uploadChunkPathFile(path, response.chunksPaths).then(function(response) {
@@ -257,6 +270,7 @@ function updateFile(path, fileId) {
             console.log("Chunks updated")
             uploadChunkPathFile(path, opRes.chunkPaths).then(function(response) {
               if (response.status = 200) {
+                redisClient.set("/uploads/files/" + fileId + ".txt", null)
                 console.log("File updated")
               }
             }).fail(function(err) {
