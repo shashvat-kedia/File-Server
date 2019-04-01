@@ -154,6 +154,7 @@ function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
 }
 
 app.use("*", function(req, res, next) {
+  //Add support for JWT token to allow user authentication
   if (req.headers["authorization"] == config.API_KEY) {
     next()
   }
