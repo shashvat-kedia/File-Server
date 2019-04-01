@@ -26,20 +26,56 @@ function sha512(password, salt) {
   }
 }
 
-app.post("/auth", function(req, res) {
-  if (isValid(req.body.userName, req.body.password)) {
+function generateJWT(payload) {
+  return res.json(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+}
+
+function isValid(username, password) {
+
+}
+
+app.post("/signup", function(req, res) {
+  if (isValid(req.body.username, req.body.password)) {
     var salt = getSalt(config.SALT_LENGTH)
     var credentials = sha512(res.body.password, salt)
-    credentials["userName"] = req.body.userName
+    credentials["username"] = req.body.username
     mongo.insertOne(credentials).then(function(response) {
       if (response.status == 200) {
-        res.json({
-          accessToken: jwt.sign({
+        res.status(200).json({
+          accessToken: generateJWT({
             userId: response.id,
-            exp: config.JWT_EXP,
-          }, config.PRIVATE_KEY, { algorithm: 'RS512' }),
+            exp: config.JWT_EXP
+          }),
           tokenType: "JWT"
         })
+      } else {
+        res.json(response.status).json({
+          message: response.message
+        })
+      }
+    }).fail(function(err) {
+      console.error(err)
+    })
+  }
+})
+
+app.post("/login", function(req, res) {
+  if (isValid(req.body.username, req.body, password)) {
+    mongo.getAuthCredentials(req.body.username).then(function(response) {
+      if (response.status == 200) {
+        if (response.credentials.password == sha512(req.body.username, response.credentials.salt)) {
+          res.status(200).json({
+            accessToken: generateJWT({
+              userId: response.credentials._id,
+              exp: config.JWT_EXP
+            }),
+            tokenType: "JWT"
+          })
+        } else {
+          res.status(403).json({
+            message: "Invalid credentials"
+          })
+        }
       } else {
         res.json(response.status).json({
           message: response.message

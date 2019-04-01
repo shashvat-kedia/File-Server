@@ -14,22 +14,44 @@ mongoClient.connect(config.MONGO_URL, function(err, database) {
 
 function insertAuthCredentials(credentials) {
   var deferred = q.defer()
-  if (dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ userName: credentials.userName }).count() == 0) {
+  if (dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: credentials.username }).count() == 0) {
     dbo.collection(config.AUTH_COLLECTION_NAME).insertOne(credentials, function(err, result) {
       if (err) {
         deferred.reject(err)
       }
       deferred.resolve({
         status: 200,
-        id: result.insertedIds[0]
+        id: result.insertedId
       });
     })
   } else {
     deferred.resolve({
       status: 409,
-      message: "Account with username " + credentials.userName + " already exists"
+      message: "Account with username " + credentials.username + " already exists"
     })
   }
   return deferred.promise()
+}
+
+function getAuthCredentials(username) {
+  var deferred = q.defer()
+  dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: username }).toArray(function(err, result) {
+    if (err) {
+      console.error(err)
+      deferred.reject(err)
+    }
+    if (result == null) {
+      deferred.resolve({
+        status: 404,
+        message: "Account not found"
+      })
+    } else {
+      deferred.resolve({
+        status: 200,
+        credentials: result
+      })
+    }
+  })
+  return deferred.promise
 }
 
