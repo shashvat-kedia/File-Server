@@ -154,9 +154,32 @@ function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
 }
 
 app.use("*", function(req, res, next) {
-  //Add support for JWT token to allow user authentication
-  if (req.headers["authorization"] == config.API_KEY) {
-    next()
+  if (req.headers["authorization"] != null) {
+    var authorizationHeader = req.headers["authorization"]
+    if (authorizationHeader.startsWith("Bearer:")) {
+      var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
+        authorizationHeader.length).trim()
+      jwt.verify(accessToken,
+        config.PRIVATE_KEY, {
+          algorithms: ["RS512"],
+          maxAge: config.JWT_EXP,
+          clockTimestamp: new Date().getTime() / 1000
+        }, function(err, payload) {
+          if (err) {
+            if (err.name == "TokenExpiredError") {
+              res.status(400).json({
+                message: "Access token expired"
+              })
+            } else if (err.name == "JSONWebTokenError") {
+              res.status(400).json({
+                message: "Malformed Access token"
+              })
+            }
+          }
+          req.authToken = jwt.decoded(accessToken, { complete: true })
+          next()
+        })
+    }
   }
   else {
     res.status(403).json({
