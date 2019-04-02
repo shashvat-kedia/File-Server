@@ -3,13 +3,13 @@ const mongoClient = mongodb.MongoClient
 const q = require('q');
 const config = require('./config.js');
 
-var db0;
+var dbo;
 
 mongoClient.connect(config.MONGO_URL, function(err, database) {
   if (err) {
     throw err
   }
-  db0 = database.db(config.DB_NAME);
+  dbo = database.db(config.DB_NAME);
 })
 
 function insertAuthCredentials(credentials) {
