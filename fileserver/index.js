@@ -229,6 +229,20 @@ app.post("/text", function(req, res) {
   })
 })
 
+app.get("/share/:fileId/:permission", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(fiileId).then(function(response) {
+    if (response.status == 200) {
+
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
+
 app.post("/upload", uploader.single("file"), function(req, res) {
   var destPath = getFileFromRequest(req)
   res.statusCode = 200
