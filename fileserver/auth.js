@@ -170,7 +170,7 @@ app.get("/accesstoken", function(req, res) {
     req.accessToken.payload.refreshToken).then(function(response) {
       if (response.status == 200) {
         if (response.refreshToken == req.accessToken.payload.refreshToken) {
-          jwt.verify(request.refreshToken,
+          jwt.verify(response.refreshToken,
             config.PUBLIC_KEY, {
               algorithms: ["RS512"],
               maxAge: config.REFRESH_JWT_EXP,
