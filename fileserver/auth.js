@@ -139,7 +139,7 @@ app.use("*", function(req, res, next) {
     var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
       authorizationHeader.length).trim()
     jwt.verify(accessToken,
-      config.PRIVATE_KEY, {
+      config.PUBLIC_KEY, {
         algorithms: ["RS512"],
         maxAge: config.JWT_EXP,
         clockTimestamp: new Date().getTime() / 1000
@@ -170,26 +170,43 @@ app.get("/accesstoken", function(req, res) {
     req.accessToken.payload.refreshToken).then(function(response) {
       if (response.status == 200) {
         if (response.refreshToken == req.accessToken.payload.refreshToken) {
-          mongo.deleteRefreshToken(req.accessToken.payload.userId).then(function(isDeleted) {
-            if (isDeleted) {
-              res.status(200).json({
-                accessToken: generateJWT({
-                  userId: req.accessToken.payload.userId,
-                  exp: config.JWT_EXP
-                }),
-                tokenType: "JWT"
-              })
-            }
+          jwt.verify(request.refreshToken,
+            config.PUBLIC_KEY, {
+              algorithms: ["RS512"],
+              maxAge: config.REFRESH_JWT_EXP,
+              clockTimestamp: new Date().getTime() / 1000
+            }, function(err, payload) {
+              if (err) {
+                if (err.name == "TokenExpiredError") {
+                  res.status(400).json({
+                    message: "Refresh token expired"
+                  })
+                } else if (err.name == "JSONWebTokenError") {
+                  res.status(400).json({
+                    message: "Malformed Refresh token"
+                  })
+                }
+              }
+              mongo.deleteRefreshToken(req.accessToken.payload.userId).then(function(isDeleted) {
+                if (isDeleted) {
+                  res.status(200).json({
+                    accessToken: generateJWT({
+                      userId: req.accessToken.payload.userId,
+                      exp: config.JWT_EXP
+                    }),
+                    tokenType: "JWT"
+                  })
+                }
 
-          }).fail(function(err) {
-            console.error(err)
-          })
+              }).fail(function(err) {
+                console.error(err)
+              })
+            })
         } else {
           res.status(400).json({
             message: "Incorrect refresh token"
           })
         }
-        jwt.verify()
       } else {
         res.status(response.status).json({
           message: response.message

@@ -230,9 +230,17 @@ app.post("/text", function(req, res) {
 })
 
 app.get("/share/:fileId/:permission", function(req, res) {
-  s3Pull.pullChunkPathFileFromS3(fiileId).then(function(response) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
+      if (req.params.permission = config.PERMISSION_READ) {
 
+      } else if (req.params.permission == config.PERMISSION_READ_WRITE) {
+
+      } else {
+        res.status(422).json({
+          message: "Invalid permission type"
+        })
+      }
     } else {
       res.status(response.status).json({
         message: response.message
