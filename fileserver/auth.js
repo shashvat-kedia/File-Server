@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const app = express()
 
@@ -27,7 +28,7 @@ function sha512(password, salt) {
 }
 
 function generateJWT(payload) {
-  return res.json(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+  return jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
 }
 
 function generateRefreshToken(id) {
@@ -165,42 +166,38 @@ app.use("*", function(req, res, next) {
 })
 
 app.get("/accesstoken", function(req, res) {
-  if (req.headers["authorization"] != null) {
-    mongo.fetchRefreshToken(req.accessToken.payload.userId,
-      req.accessToken.payload.refreshToken).then(function(response) {
-        if (response.status == 200) {
-          if (response.refreshToken == req.accessToken.payload.refreshToken) {
-            mongo.deleteRefreshToken(req.accessToken.payload.userId).then(function(isDeleted) {
-              if (isDeleted) {
-                res.status(200).json({
-                  accessToken: generateJWT({
-                    userId: req.accessToken.payload.userId,
-                    exp: config.JWT_EXP
-                  }),
-                  tokenType: "JWT"
-                })
-              }
+  mongo.fetchRefreshToken(req.accessToken.payload.userId,
+    req.accessToken.payload.refreshToken).then(function(response) {
+      if (response.status == 200) {
+        if (response.refreshToken == req.accessToken.payload.refreshToken) {
+          mongo.deleteRefreshToken(req.accessToken.payload.userId).then(function(isDeleted) {
+            if (isDeleted) {
+              res.status(200).json({
+                accessToken: generateJWT({
+                  userId: req.accessToken.payload.userId,
+                  exp: config.JWT_EXP
+                }),
+                tokenType: "JWT"
+              })
+            }
 
-            }).fail(function(err) {
-              console.error(err)
-            })
-          } else {
-            res.status(400).json({
-              message: "Incorrect refresh token"
-            })
-          }
-          jwt.verify()
+          }).fail(function(err) {
+            console.error(err)
+          })
         } else {
-          res.status(response.status).json({
-            message: response.message
+          res.status(400).json({
+            message: "Incorrect refresh token"
           })
         }
-      }).fail(function(err) {
-        console.log(err)
-      })
-  } else {
-
-  }
+        jwt.verify()
+      } else {
+        res.status(response.status).json({
+          message: response.message
+        })
+      }
+    }).fail(function(err) {
+      console.log(err)
+    })
 })
 
 //Add support for 2FA using TOTP here
