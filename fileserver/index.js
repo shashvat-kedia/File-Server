@@ -176,7 +176,7 @@ app.use("*", function(req, res, next) {
               })
             }
           }
-          req.authToken = jwt.decoded(accessToken, { complete: true })
+          req.accessToken = jwt.decoded(accessToken, { complete: true })
           next()
         })
     }
