@@ -155,7 +155,7 @@ app.use("*", function(req, res, next) {
             })
           }
         }
-        req.accessToken = jwt.decoded(accessToken, { complete: true })
+        req.accessToken = jwt.decode(accessToken, { complete: true })
         next()
       })
   } else {

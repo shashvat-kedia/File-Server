@@ -410,6 +410,49 @@ app.get("/pull/:fileId", function(req, res) {
   })
 })
 
+app.use("/*/:fileId/:shareToken", function(req, res) {
+  var decoded = jwt.decode(req.params.sharaToken)
+  jwt.verify(req.params.shareToken, config.PUBLIC_KEY, {
+    algorithms: ['RS512'],
+    maxAge: decoded.payload.exp,
+    clockTimestamp: new Date().getTime() / 1000
+  }, function(err, payload) {
+    if (err) {
+      if (err.name == "TokenExpiredError") {
+        res.status(400).json({
+          message: "Share link expired"
+        })
+      } else if (err.name == "JSONWebTokenError") {
+        res.status(400).json({
+          message: "Invalid share link"
+        })
+      } else {
+        res.status(400).json({
+          message: "Invalid share token"
+        })
+      }
+    }
+    s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+      if (response.status == 200) {
+        if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
+          req.shareToken = req.params.payload
+          next()
+        } else {
+          res.status(403).json({
+            message: "Forbidden"
+          })
+        }
+      }
+    }).fail(function(err) {
+      console.error(err)
+    })
+  })
+})
+
+app.head("/pull/:fileId/:shareToken", function(req, res) {
+
+})
+
 app.use("*", function(req, res) {
   res.status(404).json({
     "message": "Endpoint does not exist"
