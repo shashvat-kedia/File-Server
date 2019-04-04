@@ -204,7 +204,7 @@ app.get("/accesstoken", function(req, res) {
             })
         } else {
           res.status(400).json({
-            message: "Incorrect refresh token"
+            message: "Invalid refresh token"
           })
         }
       } else {

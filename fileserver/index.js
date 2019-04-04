@@ -278,7 +278,46 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   }))
 })
 
-app.put("/update/:fileId", function(req, res) {
+app.use("/*/:shareToken", function(req, res) {
+  var decoded = jwt.decode(req.params.sharaToken)
+  jwt.verify(req.params.shareToken, config.PUBLIC_KEY, {
+    algorithms: ['RS512'],
+    maxAge: decoded.payload.exp,
+    clockTimestamp: new Date().getTime() / 1000
+  }, function(err, payload) {
+    if (err) {
+      if (err.name == "TokenExpiredError") {
+        res.status(400).json({
+          message: "Share link expired"
+        })
+      } else if (err.name == "JSONWebTokenError") {
+        res.status(400).json({
+          message: "Invalid share link"
+        })
+      } else {
+        res.status(400).json({
+          message: "Invalid share token"
+        })
+      }
+    }
+    s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+      if (response.status == 200) {
+        if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
+          req.shareToken = req.params.payload
+          next()
+        } else {
+          res.status(403).json({
+            message: "Forbidden"
+          })
+        }
+      }
+    }).fail(function(err) {
+      console.error(err)
+    })
+  })
+})
+
+app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   var destPath = getFileFromRequest(req)
   res.statusCode = 200
   res.send({
@@ -291,7 +330,7 @@ app.put("/update/:fileId", function(req, res) {
   }))
 })
 
-app.delete("/delete/:fileId", function(req, res) {
+app.delete("/delete/:fileId(|/:shareToken)", function(req, res) {
   res.statusCode = 200
   res.send({
     "message": "File deleted"
@@ -302,7 +341,7 @@ app.delete("/delete/:fileId", function(req, res) {
   }))
 })
 
-app.get("/chunk/:fileId/:chunkId", function(req, res) {
+app.get("/chunk/:fileId/:chunkId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       var chunkIndex = -1;
@@ -333,7 +372,7 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
   })
 })
 
-app.head("/pull/:fileId", function(req, res) {
+app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       s3Pull.getFileLength(response.fileData.chunkPaths[response.fileData.chunkPaths.length - 1])
@@ -368,7 +407,7 @@ app.head("/pull/:fileId", function(req, res) {
 
 //Still have to deal with fetching partial file for the first and last chunk instead of full file from S3
 
-app.get("/pull/:fileId", function(req, res) {
+app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       var lastPos = response.fileData.chunkPaths.length - 1
@@ -407,45 +446,6 @@ app.get("/pull/:fileId", function(req, res) {
     }
   }).fail(function(err) {
     console.error(err)
-  })
-})
-
-app.use("/*/:fileId/:shareToken", function(req, res) {
-  var decoded = jwt.decode(req.params.sharaToken)
-  jwt.verify(req.params.shareToken, config.PUBLIC_KEY, {
-    algorithms: ['RS512'],
-    maxAge: decoded.payload.exp,
-    clockTimestamp: new Date().getTime() / 1000
-  }, function(err, payload) {
-    if (err) {
-      if (err.name == "TokenExpiredError") {
-        res.status(400).json({
-          message: "Share link expired"
-        })
-      } else if (err.name == "JSONWebTokenError") {
-        res.status(400).json({
-          message: "Invalid share link"
-        })
-      } else {
-        res.status(400).json({
-          message: "Invalid share token"
-        })
-      }
-    }
-    s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
-      if (response.status == 200) {
-        if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
-          req.shareToken = req.params.payload
-          next()
-        } else {
-          res.status(403).json({
-            message: "Forbidden"
-          })
-        }
-      }
-    }).fail(function(err) {
-      console.error(err)
-    })
   })
 })
 
