@@ -11,6 +11,7 @@ const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const randomAccessFile = require('random-access-file');
 const mime = require('mime-types');
+const jwt = require('jswonwebtoken');
 const app = express();
 
 var rmq_connection = null
@@ -229,13 +230,27 @@ app.post("/text", function(req, res) {
   })
 })
 
-app.get("/share/:fileId/:permission", function(req, res) {
+app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
+      var payload = {}
+      if (req.params.expTimestamp != 0) {
+        payload["exp"] = new Date() / 1000 + expTimestamp / 1000
+      }
       if (req.params.permission = config.PERMISSION_READ) {
-
+        payload['permissionType'] = config.PERMISION_READ
+        const shareToken = jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+        response.fileData.shares.push(shareToken);
+        res.status(200).json({
+          "shareLink": "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken
+        })
       } else if (req.params.permission == config.PERMISSION_READ_WRITE) {
-
+        payload['permissionType'] = config.PERMISSION_READ_WRITE
+        const shareToken = jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+        response.fileData.shares.push(shareToken);
+        res.status(200).json({
+          "shareLink": "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken
+        })
       } else {
         res.status(422).json({
           message: "Invalid permission type"
@@ -291,15 +306,15 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       var chunkIndex = -1;
-      for (var i = 0; i < response.chunkPaths.length; i++) {
-        var chunkPath = response.chunkPaths[i]
+      for (var i = 0; i < response.fileData.chunkPaths.length; i++) {
+        var chunkPath = response.fileData.chunkPaths[i]
         if (chunkPath.substring(chunkPath.lastIndexOf('/') + 1, chunkPath.indexOf('.')) == req.params.chunkId) {
           chunkIndex = i;
           break;
         }
       }
       if (chunkIndex != -1) {
-        pullChunk(res, [response.chunkPaths[chunkIndex]],
+        pullChunk(res, [response.fileData.chunkPaths[chunkIndex]],
           randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
       }
       else {
@@ -321,24 +336,25 @@ app.get("/chunk/:fileId/:chunkId", function(req, res) {
 app.head("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      s3Pull.getFileLength(response.chunkPaths[response.chunkPaths.length - 1]).then(function(contentLengthLastChunk) {
-        if (contentLengthLastChunk < 0) {
-          res.status(422).json({
-            "message": "File broken"
-          })
-        }
-        else {
-          res.set({
-            "Accept-Ranges": "bytes",
-            "Content-Type": mime.lookup(response.chunkPaths[0]),
-            "Content-Length": config.READ_CHUNKSIZE * (response.chunkPaths.length - 2) + contentLengthLastChunk,
-            "ETag": response.etag,
-            "LastModified": response.lastModified,
-            "Connection": "close"
-          })
-          res.end()
-        }
-      })
+      s3Pull.getFileLength(response.fileData.chunkPaths[response.fileData.chunkPaths.length - 1])
+        .then(function(contentLengthLastChunk) {
+          if (contentLengthLastChunk < 0) {
+            res.status(422).json({
+              "message": "File broken"
+            })
+          }
+          else {
+            res.set({
+              "Accept-Ranges": "bytes",
+              "Content-Type": mime.lookup(response.chunkPaths[0]),
+              "Content-Length": config.READ_CHUNKSIZE * (response.fileData.chunkPaths.length - 2) + contentLengthLastChunk,
+              "ETag": response.etag,
+              "LastModified": response.lastModified,
+              "Connection": "close"
+            })
+            res.end()
+          }
+        })
     }
     else {
       res.status(response.status).json({
@@ -355,7 +371,7 @@ app.head("/pull/:fileId", function(req, res) {
 app.get("/pull/:fileId", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      var lastPos = response.chunkPaths.length - 1
+      var lastPos = response.fileData.chunkPaths.length - 1
       var chunksToPull = []
       var firstByte = -1
       var lastByte = -1
@@ -368,7 +384,7 @@ app.get("/pull/:fileId", function(req, res) {
           lastPos = Math.ceil(lastByte / config.READ_CHUNKSIZE)
         }
         for (var i = firstPos; i <= lastPos; i++) {
-          chunksToPull.push(response.chunkPaths[i])
+          chunksToPull.push(response.fileData.chunkPaths[i])
         }
         if (lastByte != -1 && lastByte < firstByte) {
           res.status(422).json({
@@ -379,10 +395,10 @@ app.get("/pull/:fileId", function(req, res) {
         firstByte = firstByte - (firstPos - 1) * config.READ_CHUNKSIZE
       }
       else {
-        chunksToPull = response.chunkPaths.slice(1, response.length)
+        chunksToPull = response.fileData.chunkPaths.slice(1, response.length)
       }
       pullChunk(res, chunksToPull,
-        randomAccessFile(req.params.fileId + response.chunkPaths[0]), firstByte, lastByte)
+        randomAccessFile(req.params.fileId + response.fileData.chunkPaths[0]), firstByte, lastByte)
     }
     else {
       res.status(response.status).json({

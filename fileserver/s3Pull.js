@@ -109,27 +109,27 @@ module.exports = {
   },
   pullChunkPathFileFromS3: function pullChunkPathFileFromS3(fileId) {
     var deferred = q.defer()
-    getFileMetadata("/uploads/files/" + fileId + ".txt").then(function(response) {
+    getFileMetadata("/uploads/files/" + fileId + ".json").then(function(response) {
       if (response != null) {
-        redisClient.get("/uploads/files/" + fileId + ".txt", function(err, result) {
+        redisClient.get("/uploads/files/" + fileId + ".json", function(err, result) {
           if (err) {
             console.error(err)
             deferred.reject(err)
           }
           else if (result == null) {
-            S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".txt"), function(err, data) {
+            S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".json"), function(err, data) {
               if (err) {
                 console.error(err)
                 deferred.reject(err)
               }
-              chunkPaths = data.Body.toString().split(',')
+              chunkPaths = JSON.parse(data.Body).chunkPaths
               if (chunkPaths.length > 1) {
-                redisClient.set("/uploads/files/" + fileId + ".txt", data.Body.toString())
+                redisClient.set("/uploads/files/" + fileId + ".json", JSON.parse(data.Body))
                 deferred.resolve({
                   "status": 200,
                   "etag": data.ETag,
                   "lastModified": data.LastModified,
-                  "chunkPaths": chunkPaths
+                  "fileData": JSON.parse(data.Body)
                 })
               }
               else {
@@ -144,7 +144,7 @@ module.exports = {
             console.log("Redis cache hit")
             deferred.resolve({
               "status": 200,
-              "chunkPaths": result.split(',')
+              "fileData": result
             })
           }
         })

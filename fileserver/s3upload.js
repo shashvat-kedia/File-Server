@@ -87,7 +87,7 @@ function consume() {
         updateFile(message, jsonMessage.destPath, jsonMessage.fileId)
       }
       else {
-        deleteFile(message, "/uploads/files/" + jsonMessage.fileId + ".txt")
+        deleteFile(message, "/uploads/files/" + jsonMessage.fileId + ".json")
       }
     })
   }
@@ -133,7 +133,9 @@ function createChunksAndProcess(path, isUpload) {
       deferred.reject(err)
     }
     deferred.resolve({
-      "chunkPaths": chunkPaths
+      "chunkPaths": {
+        chunkPaths: chunkPaths
+      }
     })
   })
   return deferred.promise
@@ -224,9 +226,9 @@ function uploadSpecificChunks(path, chunksToUpload) {
 
 function uploadChunkPathFile(path, chunkPaths) {
   var deferred = q.defer()
-  var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".txt"
+  var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".json"
   fs.unlinkSync(path)
-  fs.writeFile(filePath, chunkPaths.toString(), function(err) {
+  fs.writeFile(filePath, JSON.stringify(chunkPaths), function(err) {
     if (err) {
       console.error(err)
       deferred.reject(err)
@@ -256,7 +258,7 @@ function deleteFile(message, path) {
 
 function sendToS3(message, path) {
   createChunksAndProcess(path, true).then(function(response) {
-    uploadChunkPathFile(path, response.chunksPaths).then(function(response) {
+    uploadChunkPathFile(path, response).then(function(response) {
       if (respone.status == 200) {
         //Message acknolegements can be sent here but have to take into account timout so that any
         //message is not processed twice
@@ -281,7 +283,7 @@ function updateFile(message, path, fileId) {
             console.log("Chunks updated")
             uploadChunkPathFile(path, opRes.chunkPaths).then(function(response) {
               if (response.status = 200) {
-                redisClient.set("/uploads/files/" + fileId + ".txt", null)
+                redisClient.set("/uploads/files/" + fileId + ".json", null)
                 con_channel.ack(message)
                 console.log("File updated")
               }
