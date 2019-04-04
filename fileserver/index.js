@@ -11,7 +11,7 @@ const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const randomAccessFile = require('random-access-file');
 const mime = require('mime-types');
-const jwt = require('jswonwebtoken');
+const jwt = require('jsonwebtoken');
 const app = express();
 
 var rmq_connection = null
@@ -178,6 +178,10 @@ app.use("*", function(req, res, next) {
           req.accessToken = jwt.decoded(accessToken, { complete: true })
           next()
         })
+    } else {
+      res.status(400).json({
+        message: "Invalid token"
+      })
     }
   } else {
     res.status(403).json({
