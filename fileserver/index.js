@@ -174,7 +174,7 @@ app.use("*", function(req, res, next) {
               })
             }
           }
-          req.accessToken = jwt.decoded(accessToken, { complete: true })
+          req.accessToken = jwt.decode(accessToken, { complete: true })
           next()
         })
     } else {
@@ -274,7 +274,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   }))
 })
 
-app.use("/*/:shareToken", function(req, res) {
+app.use("/(pull|update|delete)/:fileId/:shareToken", function(req, res) {
   var decoded = jwt.decode(req.params.shareToken)
   jwt.verify(req.params.shareToken, config.PRIVATE_KEY, {
     maxAge: decoded.payload.exp,
