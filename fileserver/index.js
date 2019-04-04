@@ -233,7 +233,9 @@ app.post("/text", function(req, res) {
 app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      var payload = {}
+      var payload = {
+        fileId: req.params.fileId
+      }
       if (req.params.expTimestamp != 0) {
         payload["exp"] = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
       }
@@ -296,9 +298,23 @@ app.use("/*/:shareToken", function(req, res) {
     }
     s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
       if (response.status == 200) {
+        var flag = 0
         if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
-          req.shareToken = req.params.payload
-          next()
+          if (req.method != "HEAD") {
+            if (payload.permissionType == config.PERMISION_READ) {
+              if (!req.path == "/pull") {
+                flag = 1
+              }
+            }
+          }
+          if (flag == 0) {
+            res.status(403).json({
+              message: "Forbidden"
+            })
+          } else {
+            req.shareToken = req.params.payload
+            next()
+          }
         } else {
           res.status(403).json({
             message: "Forbidden"
@@ -441,10 +457,6 @@ app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
   }).fail(function(err) {
     console.error(err)
   })
-})
-
-app.head("/pull/:fileId/:shareToken", function(req, res) {
-
 })
 
 app.use("*", function(req, res) {
