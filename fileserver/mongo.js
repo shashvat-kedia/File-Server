@@ -15,23 +15,27 @@ mongoClient.connect(config.MONGO_URL, function(err, database) {
 module.exports = {
   insertAuthCredentials: function insertAuthCredentials(credentials) {
     var deferred = q.defer()
-    if (dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: credentials.username }).count() == 0) {
-      dbo.collection(config.AUTH_COLLECTION_NAME).insertOne(credentials, function(err, result) {
-        if (err) {
-          deferred.reject(err)
-        }
+    dbo.collection(config.AUTH_COLLECTION_NAME).find({ username: credentials.username }).count(function(err, count) {
+      if (err) {
+        deferred.reject(err)
+      } else if (count == 0) {
+        dbo.collection(config.AUTH_COLLECTION_NAME).insertOne(credentials, function(err, result) {
+          if (err) {
+            deferred.reject(err)
+          }
+          deferred.resolve({
+            status: 200,
+            id: result.insertedId
+          });
+        })
+      } else {
         deferred.resolve({
-          status: 200,
-          id: result.insertedId
-        });
-      })
-    } else {
-      deferred.resolve({
-        status: 409,
-        message: "Account with username " + credentials.username + " already exists"
-      })
-    }
-    return deferred.promise()
+          status: 409,
+          message: "Account with username " + credentials.username + " already exists"
+        })
+      }
+    })
+    return deferred.promise
   },
   getAuthCredentials: function getAuthCredentials(username) {
     var deferred = q.defer()
@@ -87,6 +91,7 @@ module.exports = {
       }
       deferred.resolve(true)
     })
+    return deferred.promise
   },
   deleteRefreshToken: function deleteRefreshToken(id) {
     var deferred = q.defer()

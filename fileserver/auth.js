@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
+const config = require('./config.js');
+const q = require('q');
 const app = express()
 
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -28,7 +30,7 @@ function sha512(password, salt) {
 }
 
 function generateJWT(payload) {
-  return jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+  return jwt.sign(payload, config.PRIVATE_KEY)
 }
 
 function generateRefreshToken(id) {
@@ -37,7 +39,7 @@ function generateRefreshToken(id) {
     userId: id,
     exp: config.REFRESH_JWT_EXP
   })
-  mongo.saveRefreshToken(response.id, refreshToken).then(function(tokenSaved) {
+  mongo.saveRefreshToken(id, refreshToken).then(function(tokenSaved) {
     if (tokenSaved) {
       deferred.resolve({
         status: 200,
@@ -52,16 +54,17 @@ function generateRefreshToken(id) {
   }).fail(function(err) {
     deferred.reject(err)
   })
+  return deferred.promise
 }
 
 function isValid(username, password) {
-
+  return true
 }
 
 app.post("/signup", function(req, res) {
   if (isValid(req.body.username, req.body.password)) {
     var salt = getSalt(config.SALT_LENGTH)
-    var credentials = sha512(res.body.password, salt)
+    var credentials = sha512(req.body.password, salt)
     credentials["username"] = req.body.username
     mongo.insertAuthCredentials(credentials).then(function(response) {
       if (response.status == 200) {
@@ -84,7 +87,7 @@ app.post("/signup", function(req, res) {
           console.error(err)
         })
       } else {
-        res.json(response.status).json({
+        res.status(response.status).json({
           message: response.message
         })
       }
@@ -139,8 +142,7 @@ app.use("*", function(req, res, next) {
     var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
       authorizationHeader.length).trim()
     jwt.verify(accessToken,
-      config.PUBLIC_KEY, {
-        algorithms: ["RS512"],
+      config.PRIVATE_KEY, {
         maxAge: config.JWT_EXP,
         clockTimestamp: new Date().getTime() / 1000
       }, function(err, payload) {
@@ -171,8 +173,7 @@ app.get("/accesstoken", function(req, res) {
       if (response.status == 200) {
         if (response.refreshToken == req.accessToken.payload.refreshToken) {
           jwt.verify(response.refreshToken,
-            config.PUBLIC_KEY, {
-              algorithms: ["RS512"],
+            config.PRIVATE_KEY, {
               maxAge: config.REFRESH_JWT_EXP,
               clockTimestamp: new Date().getTime() / 1000
             }, function(err, payload) {

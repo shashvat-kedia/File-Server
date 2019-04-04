@@ -160,7 +160,6 @@ app.use("*", function(req, res, next) {
         authorizationHeader.length).trim()
       jwt.verify(accessToken,
         config.PRIVATE_KEY, {
-          algorithms: ["RS512"],
           maxAge: config.JWT_EXP,
           clockTimestamp: new Date().getTime() / 1000
         }, function(err, payload) {
@@ -243,7 +242,7 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
       if (req.params.permission = config.PERMISSION_READ || req.params.permission == config.PERMISSION_READ_WRITE) {
         payload['permissionType'] = req.params.permission == config.PERMISION_READ ?
           config.PERMISION_READ : config.PERMISSION_READ_WRITE
-        const shareToken = jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
+        const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
         response.fileData.shares.push(shareToken);
         res.status(200).json({
           "shareLink": "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken
@@ -277,8 +276,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 
 app.use("/*/:shareToken", function(req, res) {
   var decoded = jwt.decode(req.params.shareToken)
-  jwt.verify(req.params.shareToken, config.PUBLIC_KEY, {
-    algorithms: ['RS512'],
+  jwt.verify(req.params.shareToken, config.PRIVATE_KEY, {
     maxAge: decoded.payload.exp,
     clockTimestamp: new Date().getTime() / 1000
   }, function(err, payload) {
@@ -299,7 +297,6 @@ app.use("/*/:shareToken", function(req, res) {
     }
     s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
       if (response.status == 200) {
-        var flag = 0
         if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
           if (req.method != "HEAD" && payload.permissionType == config.PERMISION_READ && req.path != "/pull") {
             res.status(403).json({
