@@ -224,11 +224,11 @@ function uploadSpecificChunks(path, chunksToUpload) {
   })
 }
 
-function uploadChunkPathFile(path, chunkPaths) {
+function uploadChunkPathFile(path, data) {
   var deferred = q.defer()
   var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".json"
   fs.unlinkSync(path)
-  fs.writeFile(filePath, JSON.stringify(chunkPaths), function(err) {
+  fs.writeFile(filePath, JSON.stringify(data), function(err) {
     if (err) {
       console.error(err)
       deferred.reject(err)
@@ -278,10 +278,14 @@ function updateFile(message, path, fileId) {
     if (response.status == 200) {
       createChunksAndProcess(path, false).then(function(data) {
         var opRes = compare(response.chunksPaths, data.chunksPaths)
+        opRes.shares = response.shares
         uploadSpecificChunks(path, opRes.chunksToUpload).then(function(response) {
           if (response.status = 200) {
             console.log("Chunks updated")
-            uploadChunkPathFile(path, opRes.chunkPaths).then(function(response) {
+            uploadChunkPathFile(path, {
+              chunkPath: opRes.chunksPath,
+              shares: opRes.shares
+            }).then(function(response) {
               if (response.status = 200) {
                 redisClient.set("/uploads/files/" + fileId + ".json", null)
                 con_channel.ack(message)

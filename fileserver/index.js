@@ -235,17 +235,11 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
     if (response.status == 200) {
       var payload = {}
       if (req.params.expTimestamp != 0) {
-        payload["exp"] = new Date() / 1000 + expTimestamp / 1000
+        payload["exp"] = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
       }
-      if (req.params.permission = config.PERMISSION_READ) {
-        payload['permissionType'] = config.PERMISION_READ
-        const shareToken = jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
-        response.fileData.shares.push(shareToken);
-        res.status(200).json({
-          "shareLink": "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken
-        })
-      } else if (req.params.permission == config.PERMISSION_READ_WRITE) {
-        payload['permissionType'] = config.PERMISSION_READ_WRITE
+      if (req.params.permission = config.PERMISSION_READ || req.params.permission == config.PERMISSION_READ_WRITE) {
+        payload['permissionType'] = req.params.permission == config.PERMISION_READ ?
+          config.PERMISION_READ : config.PERMISSION_READ_WRITE
         const shareToken = jwt.sign(payload, config.PRIVATE_KEY, { algorithm: 'RS512' })
         response.fileData.shares.push(shareToken);
         res.status(200).json({
