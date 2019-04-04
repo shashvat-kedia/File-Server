@@ -71,8 +71,7 @@ function sendNotification(messageConfig) {
   if (socket != null) {
     socket.emit(messageConfig.channel, messageConfig.message)
     console.log("Message emitted")
-  }
-  else {
+  } else {
     console.error("Socker returned null")
   }
 }

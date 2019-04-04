@@ -123,8 +123,7 @@ function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
           "message": "File broken"
         })
         return
-      }
-      else {
+      } else {
         if (!fs.existsSync(rAF.filename)) {
           fs.writeFileSync(rAF.filename, "")
         }
@@ -136,8 +135,7 @@ function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
             if (firstByte == -1) {
               res.statusCode = 200
               fs.createReadStream(rAF.filename).pipe(res)
-            }
-            else {
+            } else {
               res.statusCode = 206
               fs.createReadStream(rAF.filename, {
                 start: firstByte,
@@ -181,8 +179,7 @@ app.use("*", function(req, res, next) {
           next()
         })
     }
-  }
-  else {
+  } else {
     res.status(403).json({
       "message": "Forbidden"
     })
@@ -275,7 +272,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
 })
 
 app.use("/*/:shareToken", function(req, res) {
-  var decoded = jwt.decode(req.params.sharaToken)
+  var decoded = jwt.decode(req.params.shareToken)
   jwt.verify(req.params.shareToken, config.PUBLIC_KEY, {
     algorithms: ['RS512'],
     maxAge: decoded.payload.exp,
@@ -300,14 +297,7 @@ app.use("/*/:shareToken", function(req, res) {
       if (response.status == 200) {
         var flag = 0
         if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
-          if (req.method != "HEAD") {
-            if (payload.permissionType == config.PERMISION_READ) {
-              if (!req.path == "/pull") {
-                flag = 1
-              }
-            }
-          }
-          if (flag == 0) {
+          if (req.method != "HEAD" && payload.permissionType == config.PERMISION_READ && req.path != "/pull") {
             res.status(403).json({
               message: "Forbidden"
             })
@@ -365,14 +355,12 @@ app.get("/chunk/:fileId/:chunkId(|/:shareToken)", function(req, res) {
       if (chunkIndex != -1) {
         pullChunk(res, [response.fileData.chunkPaths[chunkIndex]],
           randomAccessFile(req.params.fileId + req.params.chunkId + ".txt"), -1, -1)
-      }
-      else {
+      } else {
         res.status(404).json({
           "message": "Chunk not found"
         })
       }
-    }
-    else {
+    } else {
       res.status(response.status).json({
         "message": response.message
       })
@@ -391,8 +379,7 @@ app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
             res.status(422).json({
               "message": "File broken"
             })
-          }
-          else {
+          } else {
             res.set({
               "Accept-Ranges": "bytes",
               "Content-Type": mime.lookup(response.chunkPaths[0]),
@@ -404,8 +391,7 @@ app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
             res.end()
           }
         })
-    }
-    else {
+    } else {
       res.status(response.status).json({
         "message": response.message
       })
@@ -442,14 +428,12 @@ app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
           return
         }
         firstByte = firstByte - (firstPos - 1) * config.READ_CHUNKSIZE
-      }
-      else {
+      } else {
         chunksToPull = response.fileData.chunkPaths.slice(1, response.length)
       }
       pullChunk(res, chunksToPull,
         randomAccessFile(req.params.fileId + response.fileData.chunkPaths[0]), firstByte, lastByte)
-    }
-    else {
+    } else {
       res.status(response.status).json({
         "message": response.message
       })

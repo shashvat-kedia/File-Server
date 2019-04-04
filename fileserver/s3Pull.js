@@ -37,8 +37,7 @@ function getChunk(chunkPathWithOffset) {
       }).on('httpDone', function(response) {
         if (response.error) {
           deferred.reject(response.error)
-        }
-        else {
+        } else {
           redisClient.set(chunkPathWithOffset.path, data)
           deferred.resolve({
             'data': data,
@@ -47,8 +46,7 @@ function getChunk(chunkPathWithOffset) {
           })
         }
       }).send()
-    }
-    else {
+    } else {
       console.log("Redis Chunk cache hit " + chunkPathWithOffset.path)
       deferred.resolve({
         'data': result,
@@ -66,24 +64,20 @@ function getFileMetadata(key) {
     if (err) {
       console.error(err)
       deferred.reject(err)
-    }
-    else if (result == null) {
+    } else if (result == null) {
       S3.headObject(getS3ParamsForPull(key), function(err, metadata) {
         if (err && err.code == 'Not Found') {
           console.error("File not found on S3")
           deferred.resolve(null)
-        }
-        else if (err) {
+        } else if (err) {
           console.error(err)
           deferred.reject(err)
-        }
-        else {
+        } else {
           redisClient.set(key + "-metadata", JSON.stringify(metadata))
           deferred.resolve(metadata)
         }
       })
-    }
-    else {
+    } else {
       console.log(1)
       console.log("Redis cache hit")
       deferred.resolve(JSON.parse(result))
@@ -100,8 +94,7 @@ module.exports = {
     getFileMetadata(key).then(function(response) {
       if (response != null) {
         deferred.resolve(response.ContentLength)
-      }
-      else {
+      } else {
         deferred.resolve(-1)
       }
     })
@@ -115,8 +108,7 @@ module.exports = {
           if (err) {
             console.error(err)
             deferred.reject(err)
-          }
-          else if (result == null) {
+          } else if (result == null) {
             S3.getObject(getS3ParamsForPull("/uploads/files/" + fileId + ".json"), function(err, data) {
               if (err) {
                 console.error(err)
@@ -131,16 +123,14 @@ module.exports = {
                   "lastModified": data.LastModified,
                   "fileData": JSON.parse(data.Body)
                 })
-              }
-              else {
+              } else {
                 deferred.resolve({
                   "status": 422,
                   "message": "File broken"
                 })
               }
             })
-          }
-          else {
+          } else {
             console.log("Redis cache hit")
             deferred.resolve({
               "status": 200,
@@ -148,8 +138,7 @@ module.exports = {
             })
           }
         })
-      }
-      else {
+      } else {
         deferred.resolve({
           "status": 404,
           "message": "File not found"
@@ -170,8 +159,7 @@ module.exports = {
     }
     if (chunkPaths.length > 0) {
       return q.all(chunkPathsWithOffset.map(getChunk))
-    }
-    else {
+    } else {
       return null
     }
   }

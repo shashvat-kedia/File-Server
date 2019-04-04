@@ -82,11 +82,9 @@ function consume() {
       var jsonMessage = JSON.parse(message.content.toString())
       if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
         sendToS3(message, jsonMessage.destPath)
-      }
-      else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
+      } else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
         updateFile(message, jsonMessage.destPath, jsonMessage.fileId)
-      }
-      else {
+      } else {
         deleteFile(message, "/uploads/files/" + jsonMessage.fileId + ".json")
       }
     })
@@ -191,8 +189,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
           var data
           if (nread < config.READ_CHUNKSIZE) {
             data = buffer.slice(0, nread)
-          }
-          else {
+          } else {
             data = buffer
           }
           data = data.toString()
@@ -210,8 +207,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
             deferred.resolve({
               "status": 200
             })
-          }
-          else {
+          } else {
             deferred.resolve({
               "status": 404
             })
@@ -232,8 +228,7 @@ function uploadChunkPathFile(path, data) {
     if (err) {
       console.error(err)
       deferred.reject(err)
-    }
-    else {
+    } else {
       uploadToS3(getS3Params(fs.createReadStream(filePath),
         "/uploads/files/" + filePath), "Chunk hash path file upload")
       fs.unlinkSync(filePath)
@@ -248,8 +243,7 @@ function deleteFile(message, path) {
   S3.deleteObject(s3Pull.getS3ParamsForPull(path), function(err, data) {
     if (err) {
       console.error(err)
-    }
-    else {
+    } else {
       con_channel.ack(message)
       console.log("File deleted")
     }
@@ -294,8 +288,7 @@ function updateFile(message, path, fileId) {
             }).fail(function(err) {
               console.error(err)
             })
-          }
-          else {
+          } else {
             //Modify to get the chunks that could not be uploaded and they retry for certain defined no. of times
             console.log("File not uploaded completely")
           }
@@ -305,8 +298,7 @@ function updateFile(message, path, fileId) {
       }).fail(function(err) {
         console.error(err)
       })
-    }
-    else {
+    } else {
       //Storing them for the time being
       sendToS3(path)
     }
