@@ -274,7 +274,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   }))
 })
 
-app.use("/(pull|update|delete)/:fileId/:shareToken", function(req, res) {
+app.use("/pull/:fileId/:shareToken", function(req, res) {
   var decoded = jwt.decode(req.params.shareToken)
   jwt.verify(req.params.shareToken, config.PRIVATE_KEY, {
     maxAge: decoded.payload.exp,

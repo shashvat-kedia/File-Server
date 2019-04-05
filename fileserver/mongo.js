@@ -39,7 +39,7 @@ module.exports = {
   },
   getAuthCredentials: function getAuthCredentials(username) {
     var deferred = q.defer()
-    dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: username }).toArray(function(err, result) {
+    dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: username }, function(err, result) {
       if (err) {
         console.error(err)
         deferred.reject(err)

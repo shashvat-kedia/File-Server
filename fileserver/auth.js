@@ -23,10 +23,7 @@ function sha512(password, salt) {
   var hash = crypto.createHmac('sha512', salt)
   hash.update(password)
   var value = hash.digest('hex');
-  return {
-    salt: salt,
-    passwordHash: value
-  }
+  return value
 }
 
 function generateJWT(payload) {
@@ -64,9 +61,12 @@ function isValid(username, password) {
 app.post("/signup", function(req, res) {
   if (isValid(req.body.username, req.body.password)) {
     var salt = getSalt(config.SALT_LENGTH)
-    var credentials = sha512(req.body.password, salt)
-    credentials["username"] = req.body.username
-    mongo.insertAuthCredentials(credentials).then(function(response) {
+    var passwordHash = sha512(req.body.password)
+    mongo.insertAuthCredentials({
+      username: req.body.username,
+      salt: salt,
+      passwordHash: passwordHash
+    }).then(function(response) {
       if (response.status == 200) {
         generateRefreshToken(response.id).then(function(result) {
           if (result.status == 200) {
@@ -98,10 +98,10 @@ app.post("/signup", function(req, res) {
 })
 
 app.post("/login", function(req, res) {
-  if (isValid(req.body.username, req.body, password)) {
+  if (isValid(req.body.username, req.body.password)) {
     mongo.getAuthCredentials(req.body.username).then(function(response) {
       if (response.status == 200) {
-        if (response.credentials.password == sha512(req.body.username, response.credentials.salt)) {
+        if (response.credentials.passwordHash == sha512(req.body.password, response.credentials.salt)) {
           generateRefreshToken(response.id).then(function(result) {
             if (result.status == 200) {
               res.status(200).json({
@@ -132,37 +132,6 @@ app.post("/login", function(req, res) {
       }
     }).fail(function(err) {
       console.error(err)
-    })
-  }
-})
-
-app.use("*", function(req, res, next) {
-  if (req.headers["authorization"] != null) {
-    var authorizationHeader = req.headers["authorization"]
-    var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
-      authorizationHeader.length).trim()
-    jwt.verify(accessToken,
-      config.PRIVATE_KEY, {
-        maxAge: config.JWT_EXP,
-        clockTimestamp: new Date().getTime() / 1000
-      }, function(err, payload) {
-        if (err) {
-          if (err.name == "TokenExpiredError") {
-            res.status(400).json({
-              message: "Access token expired"
-            })
-          } else if (err.name == "JSONWebTokenError") {
-            res.status(400).json({
-              message: "Malformed Access token"
-            })
-          }
-        }
-        req.accessToken = jwt.decode(accessToken, { complete: true })
-        next()
-      })
-  } else {
-    res.json(401).json({
-      "message": "Unauthorized"
     })
   }
 })
@@ -217,6 +186,37 @@ app.get("/accesstoken", function(req, res) {
       console.log(err)
     })
 })
+
+/*app.use("*", function(req, res, next) {
+  if (req.headers["authorization"] != null) {
+    var authorizationHeader = req.headers["authorization"]
+    var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
+      authorizationHeader.length).trim()
+    jwt.verify(accessToken,
+      config.PRIVATE_KEY, {
+        maxAge: config.JWT_EXP,
+        clockTimestamp: new Date().getTime() / 1000
+      }, function(err, payload) {
+        if (err) {
+          if (err.name == "TokenExpiredError") {
+            res.status(400).json({
+              message: "Access token expired"
+            })
+          } else if (err.name == "JSONWebTokenError") {
+            res.status(400).json({
+              message: "Malformed Access token"
+            })
+          }
+        }
+        req.accessToken = jwt.decode(accessToken, { complete: true })
+        next()
+      })
+  } else {
+    res.json(401).json({
+      "message": "Unauthorized"
+    })
+  }
+})*/
 
 //Add support for 2FA using TOTP here
 
