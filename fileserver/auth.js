@@ -102,11 +102,12 @@ app.post("/login", function(req, res) {
     mongo.getAuthCredentials(req.body.username).then(function(response) {
       if (response.status == 200) {
         if (response.credentials.passwordHash == sha512(req.body.password, response.credentials.salt)) {
-          generateRefreshToken(response.id).then(function(result) {
+          console.log(response.credentials.id)
+          generateRefreshToken(response.credentials.id).then(function(result) {
             if (result.status == 200) {
               res.status(200).json({
                 accessToken: generateJWT({
-                  userId: response.credentials._id,
+                  userId: response.credentials.id,
                   exp: config.JWT_EXP
                 }),
                 refreshToken: result.refreshToken,
@@ -145,7 +146,6 @@ app.get("/accesstoken/:token", function(req, res) {
           clockTimestamp: new Date().getTime() / 1000
         }, function(err, payload) {
           mongo.deleteRefreshToken(response.refreshToken).then(function(isDeleted) {
-            console.log(isDeleted)
             if (isDeleted) {
               if (err) {
                 if (err.name == "TokenExpiredError") {
@@ -162,7 +162,6 @@ app.get("/accesstoken/:token", function(req, res) {
                   })
                 }
               } else {
-                console.log("1")
                 res.status(200).json({
                   accessToken: generateJWT({
                     userId: payload.userId,
@@ -171,6 +170,10 @@ app.get("/accesstoken/:token", function(req, res) {
                   tokenType: "JWT"
                 })
               }
+            } else {
+              res.status(400).json({
+                message: "Invalid Refresh token"
+              })
             }
           }).fail(function(err) {
             console.error(err)

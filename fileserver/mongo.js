@@ -50,6 +50,7 @@ module.exports = {
           message: "Account not found"
         })
       } else {
+        result.id = result._id
         deferred.resolve({
           status: 200,
           credentials: result
@@ -99,7 +100,7 @@ module.exports = {
         console.error(err)
         deferred.reject(err)
       }
-      if (result.ok == 1) {
+      if (result.result.ok == 1) {
         deferred.resolve(true)
       } else {
         deferred.resolve(false)
