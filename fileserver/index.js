@@ -172,6 +172,10 @@ app.use("*", function(req, res, next) {
               res.status(400).json({
                 message: "Malformed Access token"
               })
+            } else {
+              res.status(400).json({
+                message: "Invalid Access token"
+              })
             }
           }
           req.accessToken = jwt.decode(accessToken, { complete: true })

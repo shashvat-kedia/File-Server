@@ -36,7 +36,7 @@ function generateRefreshToken(id) {
     userId: id,
     exp: config.REFRESH_JWT_EXP
   })
-  mongo.saveRefreshToken(id, refreshToken).then(function(tokenSaved) {
+  mongo.saveRefreshToken(refreshToken).then(function(tokenSaved) {
     if (tokenSaved) {
       deferred.resolve({
         status: 200,
@@ -136,16 +136,17 @@ app.post("/login", function(req, res) {
   }
 })
 
-app.get("/accesstoken", function(req, res) {
-  mongo.fetchRefreshToken(req.accessToken.payload.userId,
-    req.accessToken.payload.refreshToken).then(function(response) {
-      if (response.status == 200) {
-        if (response.refreshToken == req.accessToken.payload.refreshToken) {
-          jwt.verify(response.refreshToken,
-            config.PRIVATE_KEY, {
-              maxAge: config.REFRESH_JWT_EXP,
-              clockTimestamp: new Date().getTime() / 1000
-            }, function(err, payload) {
+app.get("/accesstoken/:token", function(req, res) {
+  mongo.fetchRefreshToken(req.params.token).then(function(response) {
+    if (response.status == 200) {
+      jwt.verify(response.refreshToken,
+        config.PRIVATE_KEY, {
+          maxAge: config.REFRESH_JWT_EXP,
+          clockTimestamp: new Date().getTime() / 1000
+        }, function(err, payload) {
+          mongo.deleteRefreshToken(response.refreshToken).then(function(isDeleted) {
+            console.log(isDeleted)
+            if (isDeleted) {
               if (err) {
                 if (err.name == "TokenExpiredError") {
                   res.status(400).json({
@@ -155,36 +156,34 @@ app.get("/accesstoken", function(req, res) {
                   res.status(400).json({
                     message: "Malformed Refresh token"
                   })
-                }
-              }
-              mongo.deleteRefreshToken(req.accessToken.payload.userId).then(function(isDeleted) {
-                if (isDeleted) {
-                  res.status(200).json({
-                    accessToken: generateJWT({
-                      userId: req.accessToken.payload.userId,
-                      exp: config.JWT_EXP
-                    }),
-                    tokenType: "JWT"
+                } else {
+                  res.status(400).json({
+                    message: "Invalid Refresh token"
                   })
                 }
-
-              }).fail(function(err) {
-                console.error(err)
-              })
-            })
-        } else {
-          res.status(400).json({
-            message: "Invalid refresh token"
+              } else {
+                console.log("1")
+                res.status(200).json({
+                  accessToken: generateJWT({
+                    userId: payload.userId,
+                    exp: config.JWT_EXP
+                  }),
+                  tokenType: "JWT"
+                })
+              }
+            }
+          }).fail(function(err) {
+            console.error(err)
           })
-        }
-      } else {
-        res.status(response.status).json({
-          message: response.message
         })
-      }
-    }).fail(function(err) {
-      console.log(err)
-    })
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.log(err)
+  })
 })
 
 /*app.use("*", function(req, res, next) {
