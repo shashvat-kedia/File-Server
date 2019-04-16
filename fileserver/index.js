@@ -406,8 +406,6 @@ app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
   })
 })
 
-//Still have to deal with fetching partial file for the first and last chunk instead of full file from S3
-
 app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
