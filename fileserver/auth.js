@@ -7,6 +7,7 @@ const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const config = require('./config.js');
 const q = require('q');
+const ldap = require('ldapjs');
 const app = express()
 
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -14,6 +15,10 @@ app.use(bodyParser.json())
 app.use(cors())
 
 const PORT = 27327 || process.env.PORT
+
+function getLDAPConnection() {
+  return ldap.createClient(config.LDAP_CONFIG)
+}
 
 function getSalt(length) {
   return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length)
