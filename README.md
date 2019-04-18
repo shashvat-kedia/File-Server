@@ -3,6 +3,4 @@ A File Server based on HTTP using NodeJS and AWS S3 which stores files by breaki
 
 # TO-DO
 - [ ] Shift to WebDAV
-- [ ] Implement auth service
-- [ ] Push notifications for file sync
 - [ ] Split into microservices
