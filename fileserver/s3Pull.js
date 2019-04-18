@@ -157,10 +157,6 @@ module.exports = {
         offset: i * config.READ_CHUNKSIZE
       })
     }
-    if (chunkPaths.length > 0) {
-      return q.all(chunkPathsWithOffset.map(getChunk))
-    } else {
-      return null
-    }
+    return q.all(chunkPathsWithOffset.map(getChunk))
   }
 }
