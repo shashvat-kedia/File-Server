@@ -128,9 +128,9 @@ function consume() {
       if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
         sendToS3(message, jsonMessage.destPath)
       } else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
-        updateFile(message, jsonMessage.destPath, jsonMessage.fileId)
+        updateFile(message, jsonMessage.destPath, jsonMessage.fileId, jsonMessage.userId)
       } else {
-        deleteFile(message, "/uploads/files/" + jsonMessage.fileId + ".json")
+        deleteFile(message, jsonMessage.fileId, jsonMessage.userId)
       }
     })
   }
@@ -284,15 +284,16 @@ function uploadChunkPathFile(path, data) {
   })
 }
 
-function deleteFile(message, path) {
-  S3.deleteObject(s3Pull.getS3ParamsForPull(path), function(err, data) {
+function deleteFile(message, fileId, userId) {
+  S3.deleteObject(s3Pull.getS3ParamsForPull("/uploads/files/" + fileId + ".json"), function(err, data) {
     if (err) {
       console.error(err)
     } else {
       con_channel.ack(message)
       publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
         action: config.ACTION_SEND_NOTIF,
-        fileId: fileId
+        fileId: fileId,
+        userId: userId
       }))
       console.log("File deleted")
     }
@@ -334,7 +335,8 @@ function updateFile(message, path, fileId) {
                 con_channel.ack(message)
                 publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
                   action: config.ACTION_SEND_NOTIF,
-                  fileId: fileId
+                  fileId: fileId,
+                  userId: userId
                 }))
                 console.log("File updated")
               }

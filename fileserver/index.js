@@ -331,7 +331,8 @@ app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
     action: config.ACTION_UPDATE_FILE,
     destPath: destPath,
-    fileId: req.params.fileId
+    fileId: req.params.fileId,
+    userId: req.accessToken.payload.userId
   }))
 })
 
@@ -342,7 +343,8 @@ app.delete("/delete/:fileId(|/:shareToken)", function(req, res) {
   })
   publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
     action: config.ACTION_DELETE_FILE,
-    fileId: req.params.fileId
+    fileId: req.params.fileId,
+    userId: req.accessToken.payload.userId
   }))
 })
 

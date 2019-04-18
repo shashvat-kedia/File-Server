@@ -58,7 +58,9 @@ function startConsumer() {
 function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_NOTIFICATION, function(message) {
-      sendNotification(JSON.parse(message.content.toString()))
+      if (message.action == config.ACTION_SEND_NOTIF) {
+        sendNotification(JSON.parse(message.content.toString()))
+      }
     }, { noAck: true })
   }
   catch (exception) {
@@ -67,7 +69,7 @@ function consume() {
 }
 
 function sendNotification(messageConfig) {
-  var socket = connectedDevices[messageConfig.socketId]
+  var socket = connectedDevices[messageConfig.userId]
   if (socket != null) {
     socket.emit(messageConfig.channel, messageConfig.message)
     console.log("Message emitted")
@@ -77,13 +79,16 @@ function sendNotification(messageConfig) {
 }
 
 io.on('connection', function(client) {
+  //Can be connected to using io(<NOTIFICATION_SERVICE_URL>,{query: "usedId:" + <USED_ID>})
   console.log("New connection added")
-  connectedDevices[client['id']] = client
+  if (connectedDevices[client._query['userId']] == null) {
+    connectedDevices[client._query['userId']] = {}
+  }
+  connectedDevices[client._query['userId']][client['id']] = client
   client.on('closing', function(data) {
-    connectedDevices[client['id']] = null
+    connectedDevices[client._query['userId']][client['id']] = null
   })
   client.emit('message', 'Connected to Notification Service')
-  connectedDevices[client['id']] = client
 })
 
 server.listen(PORT, function() {
