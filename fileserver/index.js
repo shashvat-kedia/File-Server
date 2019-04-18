@@ -408,17 +408,18 @@ app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
   })
 })
 
-function checkConditions(req, res, etag) {
-  var passsed = true
+function checkConditions(condHeaders, etag) {
+  var passed = true
+  var supportRange = true
   var message = ""
-  if (req.headers["if-match"] != null) {
-    if (etag != req.headers["if-match"]) {
+  if (condHeaders["if-match"] != null) {
+    if (etag != condHeaders["if-match"]) {
       message = "ETag value different as compared to value specified in header"
       passed = passed && false;
     }
   }
-  if (req.headers["if-none-match"] != null) {
-    var etags = req.headers["if-not-match"].split(',')
+  if (condHeaders["if-none-match"] != null) {
+    var etags = condHeaders["if-not-match"].split(',')
     if (etags.length > 0) {
       if (etags[0].startsWith("W/")) {
         //Soft check
@@ -432,42 +433,75 @@ function checkConditions(req, res, etag) {
         }
       }
     }
-  } else if (req.headers[""] != null) {
+  } else if (condHeaders[""] != null) {
 
   }
-  return passed
+  return {
+    isValid: passed,
+    message: message,
+    supportRange: supportRange
+  }
+}
+
+function getCondHeadersFromReq(req) {
+  condHeaders = {}
+  if (req.headers["if-match"] != null) {
+    condHeaders["if-match"] = req.headers["if-match"]
+  }
+  if (req.headers["if-none-match"] != null) {
+    condHeaders["if-none-match"] = req.headers["if-none-match"]
+  }
+  if (req.headers["if-modified-since"] != null) {
+    condHeaders["if-modified-since"] = req.headers["if-modified-since"]
+  }
+  if (req.headers["if-unmodified-since"] != null) {
+    condHeaders["if-unmodified-since"] = req.headers["if-unmodified-since"]
+  }
+  if (req.headers["if-range"] != null) {
+    condHeaders["if-range"] = req.headers["if-range"]
+  }
 }
 
 app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      var lastPos = response.fileData.chunkPaths.length - 1
-      var chunksToPull = []
-      var firstByte = -1
-      var lastByte = -1
-      if (req.headers["range"] != null) {
-        var rangeHeader = req.headers["range"]
-        firstByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-')), 10)
-        var firstPos = Math.floor(firstByte / config.READ_CHUNKSIZE) + 1
-        if (!(rangeHeader[rangeHeader.length - 1] == '-')) {
-          lastByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('-') + 1, rangeHeader.length), 10)
-          lastPos = Math.ceil(lastByte / config.READ_CHUNKSIZE)
+      condHeaders = getCondHeadersFromReq(req)
+      var validation = checkConditions(condHeaders, response.etag)
+      if (validation.isValid) {
+        var lastPos = response.fileData.chunkPaths.length - 1
+        var chunksToPull = []
+        var firstByte = -1
+        var lastByte = -1
+        if ((req.headers["range"] != null && req.headers["if-range"] == null) ||
+          (req.headers["range"] != null && req.headers["if-range"] != null && validation.supportRange)) {
+          var rangeHeader = req.headers["range"]
+          firstByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-')), 10)
+          var firstPos = Math.floor(firstByte / config.READ_CHUNKSIZE) + 1
+          if (!(rangeHeader[rangeHeader.length - 1] == '-')) {
+            lastByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('-') + 1, rangeHeader.length), 10)
+            lastPos = Math.ceil(lastByte / config.READ_CHUNKSIZE)
+          }
+          for (var i = firstPos; i <= lastPos; i++) {
+            chunksToPull.push(response.fileData.chunkPaths[i])
+          }
+          if (lastByte != -1 && lastByte < firstByte) {
+            res.status(422).json({
+              "message": "Invalid range request"
+            })
+            return
+          }
+          firstByte = firstByte - (firstPos - 1) * config.READ_CHUNKSIZE
+        } else {
+          chunksToPull = response.fileData.chunkPaths.slice(1, response.length)
         }
-        for (var i = firstPos; i <= lastPos; i++) {
-          chunksToPull.push(response.fileData.chunkPaths[i])
-        }
-        if (lastByte != -1 && lastByte < firstByte) {
-          res.status(422).json({
-            "message": "Invalid range request"
-          })
-          return
-        }
-        firstByte = firstByte - (firstPos - 1) * config.READ_CHUNKSIZE
-      } else {
-        chunksToPull = response.fileData.chunkPaths.slice(1, response.length)
+        pullChunk(res, chunksToPull,
+          randomAccessFile(req.params.fileId + response.fileData.chunkPaths[0]), firstByte, lastByte)
       }
-      pullChunk(res, chunksToPull,
-        randomAccessFile(req.params.fileId + response.fileData.chunkPaths[0]), firstByte, lastByte)
+      else {
+        res.status(412).json({
+          message: validation.message
+        })
+      }
     } else {
       res.status(response.status).json({
         "message": response.message
