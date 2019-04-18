@@ -499,7 +499,7 @@ app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
         var firstByte = -1
         var lastByte = -1
         if ((req.headers["range"] != null && conditionHeaders["if-range"] == null) || (req.headers["range"] != null &&
-          ifRangeConditionCheck(conditionHeaders["if-range"], response.etag, response.lastModified))) {
+          ifRangeConditionCheck(conditionHeaders["if-range"], response.etag, new Date(response.lastModified).getTime()))) {
           var rangeHeader = req.headers["range"]
           firstByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-')), 10)
           var firstPos = Math.floor(firstByte / config.READ_CHUNKSIZE) + 1
