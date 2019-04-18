@@ -58,8 +58,12 @@ function startConsumer() {
 function consume() {
   try {
     con_channel.consume(config.QUEUE_NAME_NOTIFICATION, function(message) {
+      var message = JSON.parse(message.content.toString())
       if (message.action == config.ACTION_SEND_NOTIF) {
-        sendNotification(JSON.parse(message.content.toString()))
+        message.channel = config.NOTIF_CHANNEL
+        sendNotificationClientDevices(message)
+      } else {
+        sendNotificationDevice(message)
       }
     }, { noAck: true })
   }
@@ -68,8 +72,15 @@ function consume() {
   }
 }
 
-function sendNotification(messageConfig) {
-  var socket = connectedDevices[messageConfig.userId]
+function sendNotificationClientDevices(messageConfig) {
+  Object.keys(connectedDevices[messageConfig.userId]).forEach(function(key) {
+    messageConfig.socketId = key
+    sendNotificationDevice(messageConfig)
+  })
+}
+
+function sendNotificationDevice(messageConfig) {
+  var socket = connectedDevices[messageConfig.userId][messageConfig.socketId]
   if (socket != null) {
     socket.emit(messageConfig.channel, messageConfig.message)
     console.log("Message emitted")

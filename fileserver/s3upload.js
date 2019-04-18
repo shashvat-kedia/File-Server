@@ -293,7 +293,8 @@ function deleteFile(message, fileId, userId) {
       publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
         action: config.ACTION_SEND_NOTIF,
         fileId: fileId,
-        userId: userId
+        userId: userId,
+        message: "DELETE"
       }))
       console.log("File deleted")
     }
@@ -334,7 +335,8 @@ function updateFile(message, path, fileId) {
                 publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
                   action: config.ACTION_SEND_NOTIF,
                   fileId: fileId,
-                  userId: userId
+                  userId: userId,
+                  message: "UPDATE"
                 }))
                 console.log("File updated")
               }
