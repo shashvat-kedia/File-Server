@@ -17,6 +17,8 @@ const S3 = new AWS.S3(config.AWS_CONFIG)
 
 var rmq_connection = null
 var con_channel = null
+var pub_channel = null
+var offlinePubQueue = []
 
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
@@ -51,8 +53,51 @@ function connectToRMQ() {
     })
     console.log("RMQ connected")
     rmq_connection = con
+    startPublisher()
     startConsumer()
   })
+}
+
+function startPublisher() {
+  rmq_connection.createConfirmChannel(function(err, ch) {
+    if (err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    }
+    ch.on("error", function(err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    })
+    ch.on("close", function(err) {
+      console.error("RMQ Error:- " + err)
+      return
+    })
+    pub_channel = ch
+    console.log("Publisher started")
+    if (offlinePubQueue != null) {
+      for (var i = 0; i < offlinePubQueue.length; i++) {
+        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+      }
+    }
+    offlinePubQueue = []
+  })
+}
+
+function publish(queueName, content) {
+  if (pub_channel != null) {
+    try {
+      pub_channel.assertQueue(queueName, { durable: false })
+      pub_channel.sendToQueue(queueName, new Buffer(content))
+      console.log("Message published to RMQ")
+    }
+    catch (exception) {
+      console.error("Publisher Exception:- " + exception.message)
+      offlinePubQueue.push({
+        content: content,
+        queueName: queueName
+      })
+    }
+  }
 }
 
 function startConsumer() {
@@ -245,6 +290,10 @@ function deleteFile(message, path) {
       console.error(err)
     } else {
       con_channel.ack(message)
+      publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
+        action: config.ACTION_SEND_NOTIF,
+        fileId: fileId
+      }))
       console.log("File deleted")
     }
   })
@@ -283,6 +332,10 @@ function updateFile(message, path, fileId) {
               if (response.status = 200) {
                 redisClient.set("/uploads/files/" + fileId + ".json", null)
                 con_channel.ack(message)
+                publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
+                  action: config.ACTION_SEND_NOTIF,
+                  fileId: fileId
+                }))
                 console.log("File updated")
               }
             }).fail(function(err) {
