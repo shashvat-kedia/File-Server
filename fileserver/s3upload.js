@@ -83,23 +83,6 @@ function startPublisher() {
   })
 }
 
-function publish(queueName, content) {
-  if (pub_channel != null) {
-    try {
-      pub_channel.assertQueue(queueName, { durable: false })
-      pub_channel.sendToQueue(queueName, new Buffer(content))
-      console.log("Message published to RMQ")
-    }
-    catch (exception) {
-      console.error("Publisher Exception:- " + exception.message)
-      offlinePubQueue.push({
-        content: content,
-        queueName: queueName
-      })
-    }
-  }
-}
-
 function startConsumer() {
   rmq_connection.createChannel(function(err, ch) {
     if (err) {
@@ -119,6 +102,23 @@ function startConsumer() {
     console.log("Consumer started")
     consume()
   })
+}
+
+function publish(queueName, content) {
+  if (pub_channel != null) {
+    try {
+      pub_channel.assertQueue(queueName, { durable: false })
+      pub_channel.sendToQueue(queueName, new Buffer(content))
+      console.log("Message published to RMQ")
+    }
+    catch (exception) {
+      console.error("Publisher Exception:- " + exception.message)
+      offlinePubQueue.push({
+        content: content,
+        queueName: queueName
+      })
+    }
+  }
 }
 
 function consume() {
@@ -247,7 +247,7 @@ function uploadSpecificChunks(path, chunksToUpload) {
         if (response.status == 200) {
           successCounts += 1
         }
-        if (i >= chunksToUpoad.length) {
+        if (i >= chunksToUpload.length) {
           if (successCounts == chunksToUpload.length) {
             deferred.resolve({
               "status": 200
@@ -304,8 +304,6 @@ function sendToS3(message, path) {
   createChunksAndProcess(path, true).then(function(response) {
     uploadChunkPathFile(path, response).then(function(response) {
       if (respone.status == 200) {
-        //Message acknolegements can be sent here but have to take into account timout so that any
-        //message is not processed twice
         con_channel.ack(message)
         console.log("File uploaded")
       }
