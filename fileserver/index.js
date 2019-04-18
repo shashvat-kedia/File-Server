@@ -278,7 +278,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
   }))
 })
 
-/*app.use("/pull/:fileId/:shareToken", function(req, res) {
+app.use("/pull/:fileId/:shareToken", function(req, res) {
   var decoded = jwt.decode(req.params.shareToken)
   jwt.verify(req.params.shareToken, config.PRIVATE_KEY, {
     maxAge: decoded.payload.exp,
@@ -320,7 +320,7 @@ app.post("/upload", uploader.single("file"), function(req, res) {
       console.error(err)
     })
   })
-})*/
+})
 
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   var destPath = getFileFromRequest(req)
@@ -408,72 +408,98 @@ app.head("/pull/:fileId(|/:shareToken)", function(req, res) {
   })
 })
 
-function checkConditions(condHeaders, etag) {
+function checkConditions(conditionHeaders, etag, lastModified) {
   var passed = true
-  var supportRange = true
   var message = ""
-  if (condHeaders["if-match"] != null) {
-    if (etag != condHeaders["if-match"]) {
+  if (conditionHeaders["if-match"] != null) {
+    if (etag != conditionHeaders["if-match"]) {
       message = "ETag value different as compared to value specified in header"
       passed = passed && false;
     }
   }
-  if (condHeaders["if-none-match"] != null) {
-    var etags = condHeaders["if-not-match"].split(',')
+  if (conditionHeaders["if-none-match"] != null) {
+    var etags = conditionHeaders["if-not-match"].split(',')
     if (etags.length > 0) {
-      if (etags[0].startsWith("W/")) {
-        //Soft check
-      } else {
-        for (var i = 0; i < etags.length; i++) {
-          if (etags[i] == etag) {
-            passed = passed && false
-            message = "ETag value found in a part of list specified by the header"
-            break
-          }
+      for (var i = 0; i < etags.length; i++) {
+        if (etags[i] == etag) {
+          passed = passed && false
+          message = "ETag value found in a part of list specified by the header"
+          break
         }
       }
     }
-  } else if (condHeaders[""] != null) {
-
+  } else if (conditionHeaders["if-modified-since"] != null) {
+    if (new Date(conditionHeaders["if-modified-since"]).getTime() > lastModified) {
+      passed = passed && false
+      message = "Resource: " + etag + " modified before date in header"
+    }
+  }
+  if (conditionHeaders["if-unmodified-since"] != null) {
+    if (new Date(conditionHeaders["if-unmodified-since"]).getTime() < lastModified) {
+      passed = passed && false
+      message = "Resouce: " + etag + "modified after date in header"
+    }
+  }
+  if (conditionHeaders["last-modified"] != null) {
+    if (new Date(conditionHeaders["last-modified"]).getTime() != lastModified) {
+      passed = passed && false
+      message = "Resouce: " + etag + "wrong last modified date in header"
+    }
   }
   return {
     isValid: passed,
-    message: message,
-    supportRange: supportRange
+    message: message
   }
 }
 
-function getCondHeadersFromReq(req) {
-  condHeaders = {}
+function getConditionHeadersFromReq(req) {
+  conditionHeaders = {}
+  if (req.headers["if-range"] != null) {
+    conditionHeaders["if-range"] = req.headers["if-range"]
+    return condHeaders
+  }
   if (req.headers["if-match"] != null) {
-    condHeaders["if-match"] = req.headers["if-match"]
+    conditionHeaders["if-match"] = req.headers["if-match"]
   }
   if (req.headers["if-none-match"] != null) {
-    condHeaders["if-none-match"] = req.headers["if-none-match"]
+    conditionHeaders["if-none-match"] = req.headers["if-none-match"]
   }
   if (req.headers["if-modified-since"] != null) {
-    condHeaders["if-modified-since"] = req.headers["if-modified-since"]
+    conditionHeaders["if-modified-since"] = req.headers["if-modified-since"]
   }
   if (req.headers["if-unmodified-since"] != null) {
-    condHeaders["if-unmodified-since"] = req.headers["if-unmodified-since"]
+    conditionHeaders["if-unmodified-since"] = req.headers["if-unmodified-since"]
   }
-  if (req.headers["if-range"] != null) {
-    condHeaders["if-range"] = req.headers["if-range"]
+  return conditionHeaders
+}
+
+function ifRangeConditionCheck(ifRangeHeader, etag, lastModified) {
+  var parameters = ifRangeHeader.split(',')
+  conditionKey = ""
+  if (parameters.length == 1) {
+    conditionKey = "if-match"
+  } else {
+    conditionKey = "last-modified"
   }
+  conditionHeader[conditionKey] = parameters[0]
+  return checkConditions(conditionHeader, etag, lastModified).isValid
 }
 
 app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
-      condHeaders = getCondHeadersFromReq(req)
-      var validation = checkConditions(condHeaders, response.etag)
+      conditionHeaders = getConditionHeadersFromReq(req)
+      var validation = { isValid: true }
+      if (Object.keys(conditionHeaders).length > 0 && conditionHeaders["if-range"] == null) {
+        validation = checkConditions(conditionHeaders, response.etag, new Date(response.lastModified).getTime())
+      }
       if (validation.isValid) {
         var lastPos = response.fileData.chunkPaths.length - 1
         var chunksToPull = []
         var firstByte = -1
         var lastByte = -1
-        if ((req.headers["range"] != null && req.headers["if-range"] == null) ||
-          (req.headers["range"] != null && req.headers["if-range"] != null && validation.supportRange)) {
+        if ((req.headers["range"] != null && conditionHeaders["if-range"] == null) || (req.headers["range"] != null &&
+          ifRangeConditionCheck(conditionHeaders["if-range"], response.etag, response.lastModified))) {
           var rangeHeader = req.headers["range"]
           firstByte = parseInt(rangeHeader.substring(rangeHeader.indexOf('=') + 1, rangeHeader.indexOf('-')), 10)
           var firstPos = Math.floor(firstByte / config.READ_CHUNKSIZE) + 1
@@ -496,8 +522,7 @@ app.get("/pull/:fileId(|/:shareToken)", function(req, res) {
         }
         pullChunk(res, chunksToPull,
           randomAccessFile(req.params.fileId + response.fileData.chunkPaths[0]), firstByte, lastByte)
-      }
-      else {
+      } else {
         res.status(412).json({
           message: validation.message
         })
