@@ -4,7 +4,6 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const uploader = multer({ dest: '/uploads' });
 const config = require('./config.js');
 const s3Pull = require('./s3Pull.js');
 const amqp = require('amqplib/callback_api');
@@ -21,6 +20,8 @@ var offlinePubQueue = []
 //Decide on different READ_CHUNKSIZE for different file formats
 
 const PORT = 8080 || process.env.PORT;
+const STORAGE_TYPE_MEMORY = 1;
+const STORAGE_TYPE_DISK = STORAGE_TYPE_MEMORY + 1;
 
 app.use(express.static(__dirname + "/uploads"))
 
@@ -107,11 +108,27 @@ function publish(queueName, content) {
   }
 }
 
-function getFileFromRequest(req) {
-  const tempPath = req.file.path
-  const destPath = path.join(__dirname + "/uploads/" + Math.round((new Date()).getTime()) / 1000 + "." + req.body.format);
-  fs.renameSync(tempPath, destPath)
-  return destPath
+function getUploaderFromReq(req) {
+  var storageType = -1
+  var storage = null
+  if (req.body.fileSize != null && req.body.fileSize > config.FILE_SIZE_LARGE) {
+    storageType = STORAGE_TYPE_MEMORY
+    storage = new multer.memoryStorage()
+  } else {
+    storageType = STORAGE_TYPE_DISK
+    storage = new multer.diskStorage({
+      destination: function(req, file, cb) {
+        cb(null, "/uploads")
+      },
+      filename: function(req, file, cb) {
+        cb(null, Math.round((new Date()).getTime()) / 1000 + file.originalName.substring(file.originalName.lastIndexOf('.')))
+      }
+    })
+  }
+  return {
+    uploader: multer({ storage: storage }).single("file"),
+    storageType: storageType
+  }
 }
 
 function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
@@ -201,8 +218,10 @@ function ifRangeConditionCheck(ifRangeHeader, etag, lastModified) {
   conditionKey = ""
   if (parameters.length == 1) {
     conditionKey = "if-match"
-  } else {
+  } else if (parameters.length > 0) {
     conditionKey = "last-modified"
+  } else {
+    return false
   }
   conditionHeader[conditionKey] = parameters[0]
   return checkConditions(conditionHeader, etag, lastModified).isValid
@@ -344,15 +363,30 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
 })
 
 app.post("/upload", uploader.single("file"), function(req, res) {
-  var destPath = getFileFromRequest(req)
-  res.statusCode = 200
-  res.send({
-    "message": "File upload successfull"
+  var uploaderOb = getUploaderFromReq(req)
+  uploaderOb.uploader(req, res, function(err) {
+    if (err == multer.MulterError) {
+      console.error("MulterError: " + err)
+    } else if (err) {
+      console.error(err)
+    } else {
+      res.statusCode = 200
+      res.send({
+        "message": "File upload successfull"
+      })
+      if (uploaderOb.storageType == STORAGE_TYPE_MEMORY) {
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+          action: config.ACTION_UPLOAD_FILE,
+          destPath: req.file.path
+        }))
+      } else {
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+          action: config.ACTION_UPLOAD_FILE,
+          dataBuffer: req.file.buffer
+        }))
+      }
+    }
   })
-  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-    action: config.ACTION_UPLOAD_FILE,
-    destPath: destPath
-  }))
 })
 
 app.use("/pull/:fileId/:shareToken", function(req, res) {
