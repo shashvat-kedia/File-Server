@@ -109,13 +109,12 @@ function publish(queueName, content) {
 }
 
 function getUploaderFromReq(req) {
-  var storageType = -1
+  var storageType = STORAGE_TYPE_DISK
   var storage = null
   if (req.body.fileSize != null && req.body.fileSize > config.FILE_SIZE_LARGE) {
     storageType = STORAGE_TYPE_MEMORY
     storage = new multer.memoryStorage()
   } else {
-    storageType = STORAGE_TYPE_DISK
     storage = new multer.diskStorage({
       destination: function(req, file, cb) {
         cb(null, "/uploads")
@@ -374,17 +373,15 @@ app.post("/upload", uploader.single("file"), function(req, res) {
       res.send({
         "message": "File upload successfull"
       })
-      if (uploaderOb.storageType == STORAGE_TYPE_MEMORY) {
-        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-          action: config.ACTION_UPLOAD_FILE,
-          destPath: req.file.path
-        }))
-      } else {
-        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-          action: config.ACTION_UPLOAD_FILE,
-          dataBuffer: req.file.buffer
-        }))
+      var message = {
+        action: config.ACTION_UPLOAD_FILE
       }
+      if (uploaderOb.storageType == STORAGE_TYPE_DISK) {
+        message.destPath = req.file.path
+      } else {
+        message.dataBuffer = req.file.buffer
+      }
+      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
     }
   })
 })
