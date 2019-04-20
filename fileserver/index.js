@@ -451,23 +451,54 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
   })
 })
 
-app.get("/update/token/:shareToken/:permissionType", function(req, res) {
+app.put("/update/token/:shareToken/:permissionType", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.shareToken.payload.fileId).then(function(response) {
-    var newShareToken = req.shareToken.payload
-    if (req.params.permissionType != req.shareToken.payload.permissionType) {
-      newShareToken.permissionType = req.params.permissionType
+    if (response.status == 200) {
+      var newShareToken = req.shareToken
+      var newPayload = req.shareToken.payload
+      if (req.params.permissionType != req.shareToken.payload.permissionType) {
+        newPayload.permissionType = req.params.permissionType
+        response.fileData.shares = response.fileData.shares.filter(function(item) {
+          return item != req.shareToken
+        })
+        newShareToken = jwt.sign(newPayload, config.PRIVATE_KEY)
+        response.fileData.shares.push(newShareToken)
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+          action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+          data: response.fileData
+        }))
+      }
+      res.status(200).json({
+        shareToken: newShareToken
+      })
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
+
+app.delete("/delete/token/:shareToken", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(req.shareToken.payload.fileId).then(function(response) {
+    if (response.status == 200) {
       response.fileData.shares = response.fileData.shares.filter(function(item) {
         return item != req.shareToken
       })
-      response.fileData.shares.push(newShareToken)
+      res.status(200).json({
+        message: "Share token deleted"
+      })
       publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
         action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
         data: response.fileData
       }))
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
     }
-    res.status(200).json({
-      shareToken: jwt.sign(newShareToken, config.PRIVATE_KEY)
-    })
   }).fail(function(err) {
     console.error(err)
   })
