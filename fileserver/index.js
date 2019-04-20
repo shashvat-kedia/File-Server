@@ -280,7 +280,7 @@ function handleUploadedFile(req, res, actionType) {
 }
 
 function uploadFileFilter(req, file, cb) {
-  if (config.FILE_FORMAT_BLACKLIST.indexOf(file.originalName.sibstring(file.originalName.lastIndexOf('.') + 1)) > -1) {
+  if (config.FILE_FORMAT_BLACKLIST.indexOf(file.originalName.substring(file.originalName.lastIndexOf('.') + 1)) > -1) {
     cb(null, false)
   } else {
     cb(null, true)
