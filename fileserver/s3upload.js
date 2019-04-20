@@ -132,7 +132,14 @@ function consume() {
       } else if (jsonMessage.action == config.ACTION_DELETE_FILE) {
         deleteFile(message, jsonMessage.fileId, jsonMessage.userId)
       } else if (jsonmessage.action == config.ACTION_CHUNK_PATH_FILE_UPDATE) {
-
+        uploadChunkPathFile(null, JSON.parse(message.content.toString())).then(function(response) {
+          if (response.status == 200) {
+            con_channel.ack(message)
+          }
+        }).fail(function(err) {
+          console.error(err)
+          con_channel.nack(message)
+        })
       }
     })
   }
@@ -267,8 +274,10 @@ function uploadSpecificChunks(path, chunksToUpload) {
 
 function uploadChunkPathFile(path, data) {
   var deferred = q.defer()
-  var filePath = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.')) + ".json"
-  fs.unlinkSync(path)
+  var filePath = data.fileId + ".json"
+  if (path != null) {
+    fs.unlinkSync(path)
+  }
   fs.writeFile(filePath, JSON.stringify(data), function(err) {
     if (err) {
       console.error(err)
@@ -303,6 +312,7 @@ function deleteFile(message, fileId, userId) {
 
 function sendToS3(message, path) {
   createChunksAndProcess(path, true).then(function(response) {
+    response.fileId = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.'))
     uploadChunkPathFile(path, response).then(function(response) {
       if (respone.status == 200) {
         con_channel.ack(message)
@@ -326,6 +336,7 @@ function updateFile(message, path, fileId, userId) {
           if (response.status = 200) {
             console.log("Chunks updated")
             uploadChunkPathFile(path, {
+              fileId: fileId,
               chunkPath: opRes.chunksPath,
               shares: opRes.shares
             }).then(function(response) {

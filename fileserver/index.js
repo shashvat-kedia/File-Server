@@ -365,7 +365,7 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
         fileId: req.params.fileId
       }
       if (req.params.expTimestamp != 0) {
-        payload["exp"] = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
+        payload.exp = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
       }
       if (req.params.permission = config.PERMISSION_READ || req.params.permission == config.PERMISSION_READ_WRITE) {
         payload['permissionType'] = req.params.permission == config.PERMISION_READ ?
@@ -378,7 +378,7 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
         })
         publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
           action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
-          data: response
+          data: response.fileData
         }))
       } else {
         res.status(422).json({
@@ -430,7 +430,7 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
     }
     s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
       if (response.status == 200) {
-        if (response.fileData.shares.indexOf(req.params.shareToken) > -1) {
+        if (response.fileData.shares.indexOf(req.params.shareToken) > -1 && response.fileId == req.params.fileId) {
           if (req.method != "HEAD" && payload.permissionType == config.PERMISION_READ && req.path != "/pull") {
             res.status(403).json({
               message: "Forbidden"
@@ -452,12 +452,24 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
 })
 
 app.get("/update/token/:shareToken/:permissionType", function(req, res) {
-  var newShareToken = req.shareToken.payload
-  if (req.params.permissionType != req.shareToken.payload.permissionType) {
-    newShareToken.permissionType = req.params.permissionType
-  }
-  res.status(200).json({
-    shareToken: jwt.sign(newShareToken, config.PRIVATE_KEY)
+  s3Pull.pullChunkPathFileFromS3(req.shareToken.payload.fileId).then(function(response) {
+    var newShareToken = req.shareToken.payload
+    if (req.params.permissionType != req.shareToken.payload.permissionType) {
+      newShareToken.permissionType = req.params.permissionType
+      response.fileData.shares = response.fileData.shares.filter(function(item) {
+        return item != req.shareToken
+      })
+      response.fileData.shares.push(newShareToken)
+      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+        action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+        data: response.fileData
+      }))
+    }
+    res.status(200).json({
+      shareToken: jwt.sign(newShareToken, config.PRIVATE_KEY)
+    })
+  }).fail(function(err) {
+    console.error(err)
   })
 })
 
