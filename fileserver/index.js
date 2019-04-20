@@ -247,6 +247,34 @@ function getConditionHeadersFromReq(req) {
   return conditionHeaders
 }
 
+function handleUploadedFile(req, res, actionType) {
+  var deferred = q.defer()
+  var uploaderOb = getUploaderFromReq(req)
+  uploaderOb.uploader(req, res, function(err) {
+    if (err == multer.MulterError) {
+      console.log("Multer error: ")
+      q.reject(err)
+    } else if (err) {
+      q.reject(err)
+    } else {
+      var message = {
+        action: actionType
+      }
+      if (uploaderOb.storageType == STORAGE_TYPE_DISK) {
+        message.destPath = req.file.path
+      } else {
+        message.dataBuffer = req.file.buffer
+      }
+      if (actionType == config.ACTION_UPDATE_FILE) {
+        message.fileId = req.params.fileId,
+          message.userId = req.accessToken.payload.userId
+      }
+      q.resolve(message)
+    }
+  })
+  return q.promise
+}
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] != null) {
     var authorizationHeader = req.headers["authorization"]
@@ -299,6 +327,7 @@ app.get("/:socketId", function(req, res) {
   publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
     channel: "message",
     message: "You have hit home",
+    userId: req.accessToken.payload.userId,
     socketId: req.params.socketId
   }))
   console.log("Welcome message sent")
@@ -361,42 +390,14 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   })
 })
 
-function handleUploadedFile(req,res,actionType){
-  var deferred = q.defer()
-  var uploaderOb = getUploaderFromReq(req)
-  uploaderOb.uploader(req, res, function(err) {
-    if (err == multer.MulterError) {
-      console.log("Multer error: ")
-      q.reject(err)
-    } else if (err) {
-      q.reject(err)
-    } else {
-      var message = {
-        action: actionType
-      }
-      if (uploaderOb.storageType == STORAGE_TYPE_DISK) {
-        message.destPath = req.file.path
-      } else {
-        message.dataBuffer = req.file.buffer
-      }
-      if(actionType == config.ACTION_UPDATE_FILE){
-        message.fileId = req.params.fileId,
-        message.userId = req.accessToken.payload.userId
-      }
-      q.resolve(message)
-    }
-  })
-  return q.promise
-}
-
 app.post("/upload", function(req, res) {
-  handleUploadedFile(req,res,config.ACTION_UPLOAD_FILE).then(function(message){
+  handleUploadedFile(req, res, config.ACTION_UPLOAD_FILE).then(function(message) {
     res.statusCode = 200
     res.send({
       "message": "File upload successfull"
     })
     publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
-  }).fail(function(err){
+  }).fail(function(err) {
     console.error(err)
   })
 })
@@ -446,13 +447,13 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
 })
 
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
-  handleUploadedFile(req,res,config.ACTION_UPDATE_FILE).then(function(message){
+  handleUploadedFile(req, res, config.ACTION_UPDATE_FILE).then(function(message) {
     res.statusCode = 200
     res.send({
       "message": "File updated"
     })
-    publish(config.QUEUE_NAME_S3_SERVICE,JSON.stringify(message))
-  }).fail(function(err){
+    publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
+  }).fail(function(err) {
     console.error(err)
   })
 })
