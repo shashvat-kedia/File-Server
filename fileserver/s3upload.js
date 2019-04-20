@@ -129,8 +129,10 @@ function consume() {
         sendToS3(message, jsonMessage.destPath)
       } else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
         updateFile(message, jsonMessage.destPath, jsonMessage.fileId, jsonMessage.userId)
-      } else {
+      } else if (jsonMessage.action == config.ACTION_DELETE_FILE) {
         deleteFile(message, jsonMessage.fileId, jsonMessage.userId)
+      } else if (jsonmessage.action == config.ACTION_CHUNK_PATH_FILE_UPDATE) {
+
       }
     })
   }
@@ -176,9 +178,7 @@ function createChunksAndProcess(path, isUpload) {
       deferred.reject(err)
     }
     deferred.resolve({
-      "chunkPaths": {
-        chunkPaths: chunkPaths
-      }
+      chunkPaths: chunkPaths
     })
   })
   return deferred.promise
@@ -316,7 +316,7 @@ function sendToS3(message, path) {
   })
 }
 
-function updateFile(message, path, fileId) {
+function updateFile(message, path, fileId, userId) {
   s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
     if (response.status == 200) {
       createChunksAndProcess(path, false).then(function(data) {

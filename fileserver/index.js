@@ -253,9 +253,9 @@ function handleUploadedFile(req, res, actionType) {
   uploaderOb.uploader(req, res, function(err) {
     if (err == multer.MulterError) {
       console.log("Multer error: ")
-      q.reject(err)
+      deferred.reject(err)
     } else if (err) {
-      q.reject(err)
+      deferred.reject(err)
     } else {
       var message = {
         action: actionType
@@ -266,13 +266,13 @@ function handleUploadedFile(req, res, actionType) {
         message.dataBuffer = req.file.buffer
       }
       if (actionType == config.ACTION_UPDATE_FILE) {
-        message.fileId = req.params.fileId,
-          message.userId = req.accessToken.payload.userId
+        message.fileId = req.params.fileId
+        message.userId = req.accessToken.payload.userId
       }
-      q.resolve(message)
+      deferred.resolve(message)
     }
   })
-  return q.promise
+  return deferred.promise
 }
 
 app.use("*", function(req, res, next) {
@@ -373,8 +373,13 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
         const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
         response.fileData.shares.push(shareToken);
         res.status(200).json({
-          "shareLink": "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken
+          shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
+          shareToken: shareToken
         })
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+          action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+          data: response
+        }))
       } else {
         res.status(422).json({
           message: "Invalid permission type"
