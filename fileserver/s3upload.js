@@ -355,7 +355,7 @@ function updateFile(message, path, fileId) {
       })
     } else {
       //Storing them for the time being
-      sendToS3(path)
+      sendToS3(message, path)
     }
   }).fail(function(err) {
     console.error(err)

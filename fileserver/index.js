@@ -116,11 +116,11 @@ function getUploaderFromReq(req) {
     storage = new multer.memoryStorage()
   } else {
     storage = new multer.diskStorage({
-      destination: function(req, file, cb) {
-        cb(null, "/uploads")
+      destination: function(req, file, callbackl) {
+        callback(null, "/uploads")
       },
-      filename: function(req, file, cb) {
-        cb(null, Math.round((new Date()).getTime()) / 1000 + file.originalName.substring(file.originalName.lastIndexOf('.')))
+      filename: function(req, file, callback) {
+        callback(null, Math.round((new Date()).getTime()) / 1000 + file.originalName.substring(file.originalName.lastIndexOf('.')))
       }
     })
   }
@@ -361,28 +361,43 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   })
 })
 
-app.post("/upload", uploader.single("file"), function(req, res) {
+function handleUploadedFile(req,res,actionType){
+  var deferred = q.defer()
   var uploaderOb = getUploaderFromReq(req)
   uploaderOb.uploader(req, res, function(err) {
     if (err == multer.MulterError) {
-      console.error("MulterError: " + err)
+      console.log("Multer error: ")
+      q.reject(err)
     } else if (err) {
-      console.error(err)
+      q.reject(err)
     } else {
-      res.statusCode = 200
-      res.send({
-        "message": "File upload successfull"
-      })
       var message = {
-        action: config.ACTION_UPLOAD_FILE
+        action: actionType
       }
       if (uploaderOb.storageType == STORAGE_TYPE_DISK) {
         message.destPath = req.file.path
       } else {
         message.dataBuffer = req.file.buffer
       }
-      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
+      if(actionType == config.ACTION_UPDATE_FILE){
+        message.fileId = req.params.fileId,
+        message.userId = req.accessToken.payload.userId
+      }
+      q.resolve(message)
     }
+  })
+  return q.promise
+}
+
+app.post("/upload", function(req, res) {
+  handleUploadedFile(req,res,config.ACTION_UPLOAD_FILE).then(function(message){
+    res.statusCode = 200
+    res.send({
+      "message": "File upload successfull"
+    })
+    publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
+  }).fail(function(err){
+    console.error(err)
   })
 })
 
@@ -431,17 +446,15 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
 })
 
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
-  var destPath = getFileFromRequest(req)
-  res.statusCode = 200
-  res.send({
-    "message": "File updated"
+  handleUploadedFile(req,res,config.ACTION_UPDATE_FILE).then(function(message){
+    res.statusCode = 200
+    res.send({
+      "message": "File updated"
+    })
+    publish(config.QUEUE_NAME_S3_SERVICE,JSON.stringify(message))
+  }).fail(function(err){
+    console.error(err)
   })
-  publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-    action: config.ACTION_UPDATE_FILE,
-    destPath: destPath,
-    fileId: req.params.fileId,
-    userId: req.accessToken.payload.userId
-  }))
 })
 
 app.delete("/delete/:fileId(|/:shareToken)", function(req, res) {
