@@ -11,6 +11,7 @@ const q = require('q');
 const s3Pull = require('./s3Pull.js');
 const redis = require('redis');
 const redisClient = redis.createClient();
+const Readable = require('streams').Readable;
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)
@@ -126,9 +127,9 @@ function consume() {
     con_channel.consume(config.QUEUE_NAME_S3_SERVICE, function(message) {
       var jsonMessage = JSON.parse(message.content.toString())
       if (jsonMessage.action == config.ACTION_UPLOAD_FILE) {
-        sendToS3(message, jsonMessage.destPath)
+        sendToS3(message, jsonMessage)
       } else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
-        updateFile(message, jsonMessage.destPath, jsonMessage.fileId, jsonMessage.userId)
+        updateFile(message, jsonMessage)
       } else if (jsonMessage.action == config.ACTION_DELETE_FILE) {
         deleteFile(message, jsonMessage.fileId, jsonMessage.userId)
       } else if (jsonmessage.action == config.ACTION_CHUNK_PATH_FILE_UPDATE) {
@@ -167,27 +168,46 @@ function uploadToS3(s3_params, chunk_hash) {
   })
 }
 
-function createChunksAndProcess(path, isUpload) {
+function createChunksAndProcess(jsonMessage, isUpload) {
   var deferred = q.defer()
   chunkPaths = [path.substring(path.lastIndexOf('.'), path.length)]
-  var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
-  readStream.on('data', function(chunk) {
-    var chunkHash = hash(chunk)
-    var chunkPath = "/chunks/" + chunkHash + ".txt"
-    chunkPaths.push(chunkPath)
-    if (isUpload) {
-      uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
+  if (jsonMessage.destPath != null) {
+    var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
+    readStream.on('data', function(chunk) {
+      var chunkHash = hash(chunk.toString())
+      var chunkPath = "/chunks/" + chunkHash + ".txt"
+      chunkPaths.push(chunkPath)
+      if (isUpload) {
+        uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
+      }
+    })
+    readStream.on('close', function(err) {
+      if (err) {
+        console.error(err)
+        deferred.reject(err)
+      }
+      deferred.resolve({
+        chunkPaths: chunkPaths
+      })
+    })
+  } else {
+    var limit = parseInt(jsonMessage.dataBuffer.length / config.READ_CHUNKSIZE, 10)
+    if (jsonMessage.dataBuffer.length % config.READ_CHUNKSIZE != 0) {
+      limit++
     }
-  })
-  readStream.on('close', function(err) {
-    if (err) {
-      console.error(err)
-      deferred.reject(err)
+    for (var i = 0; i < limit; i++) {
+      var chunk = jsonMessage.dataBuffer.slice(i * config.READ_CHUNKSIZE, Math.min(jsonMessage.dataBuffer.length, (i + 1) * config.READ_CHUNKSIZE))
+      var chunkHash = hash(chunk.toString())
+      var chunkPath = "/chunks/" + chunkHash + ".txt"
+      chunkPaths.push(chunkPath)
+      if (isUpload) {
+        uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
+      }
     }
     deferred.resolve({
       chunkPaths: chunkPaths
     })
-  })
+  }
   return deferred.promise
 }
 
@@ -221,55 +241,67 @@ function compare(oldChunkPaths, newChunkPaths) {
   }
 }
 
-function uploadSpecificChunks(path, chunksToUpload) {
+function uploadSpecificChunks(jsonMessage, chunksToUpload) {
   var deferred = q.defer()
-  fs.open(path, 'r', function(err, fd) {
-    if (err) {
-      console.error(err)
-      deferred.reject(err)
-    }
-    var successCounts = 0
-    for (var i = 0; i < chunksToUpload.length; i++) {
-      q.fcall(function(chunkToUpload) {
-        var deferred = q.defer()
-        var buffer = new Buffer(config.READ_CHUNKSIZE)
-        fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunkToUpload.index * config.READ_CHUNKSIZE, function(err, nread) {
-          if (err) {
-            console.error(err)
-            deferred.reject(err)
-          }
-          var data
-          if (nread < config.READ_CHUNKSIZE) {
-            data = buffer.slice(0, nread)
-          } else {
-            data = buffer
-          }
-          data = data.toString()
-          uploadToS3(getS3Params(data, chunkToUpload.chunkPath), chunkToUpload.chunkHash)
-          deferred.resolve({
-            "status": 200
-          })
-        })
-      }, chunksToUpload[i]).then(function(response) {
-        if (response.status == 200) {
-          successCounts += 1
-        }
-        if (i >= chunksToUpload.length) {
-          if (successCounts == chunksToUpload.length) {
+  if (jsonMessage.destPath != null) {
+    fs.open(jsonMessage.destPath, 'r', function(err, fd) {
+      if (err) {
+        console.error(err)
+        deferred.reject(err)
+      }
+      var successCounts = 0
+      for (var i = 0; i < chunksToUpload.length; i++) {
+        q.fcall(function(chunkToUpload) {
+          var deferred = q.defer()
+          var buffer = new Buffer(config.READ_CHUNKSIZE)
+          fs.read(fd, buffer, 0, config.READ_CHUNKSIZE, chunkToUpload.index * config.READ_CHUNKSIZE, function(err, nread) {
+            if (err) {
+              console.error(err)
+              deferred.reject(err)
+            }
+            var data
+            if (nread < config.READ_CHUNKSIZE) {
+              data = buffer.slice(0, nread)
+            } else {
+              data = buffer
+            }
+            data = data.toString()
+            uploadToS3(getS3Params(data, chunkToUpload.chunkPath), chunkToUpload.chunkHash)
             deferred.resolve({
               "status": 200
             })
-          } else {
-            deferred.resolve({
-              "status": 404
-            })
+          })
+        }, chunksToUpload[i]).then(function(response) {
+          if (response.status == 200) {
+            successCounts += 1
           }
-        }
-      }).fail(function(err) {
-        console.error(err)
-      })
+          if (i >= chunksToUpload.length) {
+            if (successCounts == chunksToUpload.length) {
+              deferred.resolve({
+                "status": 200
+              })
+            } else {
+              deferred.resolve({
+                "status": 404
+              })
+            }
+          }
+        }).fail(function(err) {
+          console.error(err)
+        })
+      }
+    })
+  } else {
+    for (var i = 0; i < chunksToUpload.length; i++) {
+      uploadToS3(getS3Params(jsonMessage.dataBuffer.slice(chunksToUpload[i].index * config.READ_CHUNKSIZE,
+        (chunksToUpload[i].index + 1) * config.READ_CHUNKSIZE).toString(), chunksToUpload[i].chunkPath),
+        chunksToUpload.chunkHash)
     }
-  })
+    deferred.resolve({
+      "status": 200
+    })
+  }
+  return deferred.promise
 }
 
 function uploadChunkPathFile(path, data) {
@@ -310,10 +342,11 @@ function deleteFile(message, fileId, userId) {
   })
 }
 
-function sendToS3(message, path) {
-  createChunksAndProcess(path, true).then(function(response) {
-    response.fileId = path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.'))
-    uploadChunkPathFile(path, response).then(function(response) {
+function sendToS3(message, jsonMessage) {
+  createChunksAndProcess(jsonMessage, true).then(function(response) {
+    response.fileId = jsonMessage.destPath != null ? jsonMessage.destPath.substring(path.lastIndexOf('/') + 1,
+      jsonMessage.destPath.lastIndexOf('.')) : jsonMessage.fileId
+    uploadChunkPathFile(jsonMessage.destPath, response).then(function(response) {
       if (respone.status == 200) {
         con_channel.ack(message)
         console.log("File uploaded")
@@ -326,27 +359,27 @@ function sendToS3(message, path) {
   })
 }
 
-function updateFile(message, path, fileId, userId) {
-  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
+function updateFile(message, jsonMessage) {
+  s3Pull.pullChunkPathFileFromS3(jsonMessage.fileId).then(function(response) {
     if (response.status == 200) {
-      createChunksAndProcess(path, false).then(function(data) {
+      createChunksAndProcess(jsonMessage, false).then(function(data) {
         var opRes = compare(response.chunksPaths, data.chunksPaths)
         opRes.shares = response.shares
-        uploadSpecificChunks(path, opRes.chunksToUpload).then(function(response) {
+        uploadSpecificChunks(jsonMessage, opRes.chunksToUpload).then(function(response) {
           if (response.status = 200) {
             console.log("Chunks updated")
-            uploadChunkPathFile(path, {
-              fileId: fileId,
+            uploadChunkPathFile(jsonMessage.destPath, {
+              fileId: jsonMessage.fileId,
               chunkPath: opRes.chunksPath,
               shares: opRes.shares
             }).then(function(response) {
               if (response.status = 200) {
-                redisClient.set("/uploads/files/" + fileId + ".json", null)
+                redisClient.set("/uploads/files/" + jsonMessage.fileId + ".json", null)
                 con_channel.ack(message)
                 publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
                   action: config.ACTION_SEND_NOTIF,
-                  fileId: fileId,
-                  userId: userId,
+                  fileId: jsonMessage.fileId,
+                  userId: jsonMessage.userId,
                   message: "UPDATE"
                 }))
                 console.log("File updated")
@@ -366,7 +399,7 @@ function updateFile(message, path, fileId, userId) {
       })
     } else {
       //Storing them for the time being
-      sendToS3(message, path)
+      sendToS3(message, jsonMessage)
     }
   }).fail(function(err) {
     console.error(err)

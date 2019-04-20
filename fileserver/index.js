@@ -108,28 +108,6 @@ function publish(queueName, content) {
   }
 }
 
-function getUploaderFromReq(req) {
-  var storageType = STORAGE_TYPE_DISK
-  var storage = null
-  if (req.body.fileSize != null && req.body.fileSize > config.FILE_SIZE_LARGE) {
-    storageType = STORAGE_TYPE_MEMORY
-    storage = new multer.memoryStorage()
-  } else {
-    storage = new multer.diskStorage({
-      destination: function(req, file, callbackl) {
-        callback(null, "/uploads")
-      },
-      filename: function(req, file, callback) {
-        callback(null, Math.round((new Date()).getTime()) / 1000 + file.originalName.substring(file.originalName.lastIndexOf('.')))
-      }
-    })
-  }
-  return {
-    uploader: multer({ storage: storage }).single("file"),
-    storageType: storageType
-  }
-}
-
 function pullChunk(res, chunksToPull, rAF, firstByte, lastByte) {
   s3Pull.pullChunkFromS3(chunksToPull).then(function(response) {
     for (var j = 0; j < response.length; j++) {
@@ -247,6 +225,28 @@ function getConditionHeadersFromReq(req) {
   return conditionHeaders
 }
 
+function getUploaderFromReq(req) {
+  var storageType = STORAGE_TYPE_DISK
+  var storage = null
+  if (req.body.fileSize != null && req.body.fileSize > config.FILE_SIZE_LARGE) {
+    storageType = STORAGE_TYPE_MEMORY
+    storage = new multer.memoryStorage()
+  } else {
+    storage = new multer.diskStorage({
+      destination: function(req, file, callbackl) {
+        callback(null, "/uploads")
+      },
+      filename: function(req, file, callback) {
+        callback(null, Math.round((new Date()).getTime()) / 1000 + file.originalName.substring(file.originalName.lastIndexOf('.')))
+      }
+    })
+  }
+  return {
+    uploader: multer({ storage: storage }).single("file"),
+    storageType: storageType
+  }
+}
+
 function handleUploadedFile(req, res, actionType) {
   var deferred = q.defer()
   var uploaderOb = getUploaderFromReq(req)
@@ -264,6 +264,7 @@ function handleUploadedFile(req, res, actionType) {
         message.destPath = req.file.path
       } else {
         message.dataBuffer = req.file.buffer
+        message.fileId = req.file.originalName.substring(req.file.originalName.lastIndexOf('.') + 1)
       }
       if (actionType == config.ACTION_UPDATE_FILE) {
         message.fileId = req.params.fileId
