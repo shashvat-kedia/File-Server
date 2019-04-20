@@ -446,6 +446,16 @@ app.use("/pull/:fileId/:shareToken", function(req, res) {
   })
 })
 
+app.get("/update/token/:shareToken/:permissionType", function(req, res) {
+  var newShareToken = req.shareToken.payload
+  if (req.params.permissionType != req.shareToken.payload.permissionType) {
+    newShareToken.permissionType = req.params.permissionType
+  }
+  res.status(200).json({
+    shareToken: jwt.sign(newShareToken, config.PRIVATE_KEY)
+  })
+})
+
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   handleUploadedFile(req, res, config.ACTION_UPDATE_FILE).then(function(message) {
     res.statusCode = 200
