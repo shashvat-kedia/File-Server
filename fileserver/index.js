@@ -242,7 +242,10 @@ function getUploaderFromReq(req) {
     })
   }
   return {
-    uploader: multer({ storage: storage }).single("file"),
+    uploader: multer({
+      storage: storage,
+      fileFilter: uploadFileFilter
+    }).single("file"),
     storageType: storageType
   }
 }
@@ -274,6 +277,14 @@ function handleUploadedFile(req, res, actionType) {
     }
   })
   return deferred.promise
+}
+
+function uploadFileFilter(req, file, cb) {
+  if (config.FILE_FORMAT_BLACKLIST.indexOf(file.originalName.sibstring(file.originalName.lastIndexOf('.') + 1)) > -1) {
+    cb(null, false)
+  } else {
+    cb(null, true)
+  }
 }
 
 app.use("*", function(req, res, next) {

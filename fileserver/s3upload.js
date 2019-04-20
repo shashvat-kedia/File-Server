@@ -168,18 +168,22 @@ function uploadToS3(s3_params, chunk_hash) {
   })
 }
 
+function processChunk(chunk, isUpload) {
+  var chunkHash = hash(chunk.toString())
+  var chunkPath = "/chunks/" + chunkHash + ".txt"
+  if (isUpload) {
+    uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
+  }
+  return chunkPath
+}
+
 function createChunksAndProcess(jsonMessage, isUpload) {
   var deferred = q.defer()
   chunkPaths = [path.substring(path.lastIndexOf('.'), path.length)]
   if (jsonMessage.destPath != null) {
     var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
     readStream.on('data', function(chunk) {
-      var chunkHash = hash(chunk.toString())
-      var chunkPath = "/chunks/" + chunkHash + ".txt"
-      chunkPaths.push(chunkPath)
-      if (isUpload) {
-        uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
-      }
+      chunkPaths.push(processChunk(chunk.toString(), isUpload))
     })
     readStream.on('close', function(err) {
       if (err) {
@@ -196,13 +200,9 @@ function createChunksAndProcess(jsonMessage, isUpload) {
       limit++
     }
     for (var i = 0; i < limit; i++) {
-      var chunk = jsonMessage.dataBuffer.slice(i * config.READ_CHUNKSIZE, Math.min(jsonMessage.dataBuffer.length, (i + 1) * config.READ_CHUNKSIZE))
-      var chunkHash = hash(chunk.toString())
-      var chunkPath = "/chunks/" + chunkHash + ".txt"
-      chunkPaths.push(chunkPath)
-      if (isUpload) {
-        uploadToS3(getS3Params(chunk, chunkPath), chunkHash)
-      }
+      var chunk = jsonMessage.dataBuffer.slice(i * config.READ_CHUNKSIZE, Math.min(jsonMessage.dataBuffer.length,
+        (i + 1) * config.READ_CHUNKSIZE))
+      chunkPaths.push(processChunk(chunk.toString(), isUpload))
     }
     deferred.resolve({
       chunkPaths: chunkPaths
