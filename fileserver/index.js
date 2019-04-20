@@ -395,6 +395,40 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   })
 })
 
+app.get("/shares/:fileId", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      res.status(200).json({
+        shares: response.fileData.shares
+      })
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
+
+app.get("/chunks/:fileId", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      res.status(200).json({
+        chunks: response.fileData.chunkPaths.map(function(item) {
+          return item.substring(item.lastIndexOf('/' + 1, item.lastIndexOf('.')))
+        })
+      })
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
+
 app.post("/upload", function(req, res) {
   handleUploadedFile(req, res, config.ACTION_UPLOAD_FILE).then(function(message) {
     res.statusCode = 200
