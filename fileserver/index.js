@@ -552,12 +552,13 @@ app.delete("/delete/token/:shareToken", function(req, res) {
 
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   handleUploadedFile(req, res, config.ACTION_UPDATE_FILE).then(function(message) {
-    s3Pull.pullChunkPathFileFromS3(req.params.fileId).tehn(function(response) {
+    s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
       if (response.status == 200) {
         message.fileData = response.fileData
         res.status(200).json({
           message: "File updated"
         })
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
       } else {
         res.status(response.status).json({
           message: response.message
@@ -566,7 +567,6 @@ app.put("/update/:fileId(|/:shareToken)", function(req, res) {
     }).fail(function(err) {
       console.error(err)
     })
-    publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
   }).fail(function(err) {
     console.error(err)
   })
