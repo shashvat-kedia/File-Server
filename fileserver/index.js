@@ -279,11 +279,11 @@ function handleUploadedFile(req, res, actionType) {
   return deferred.promise
 }
 
-function uploadFileFilter(req, file, cb) {
+function uploadFileFilter(req, file, callback) {
   if (config.FILE_FORMAT_BLACKLIST.indexOf(file.originalName.substring(file.originalName.lastIndexOf('.') + 1)) > -1) {
-    cb(null, false)
+    callback(null, false)
   } else {
-    cb(null, true)
+    callback(null, true)
   }
 }
 
@@ -552,9 +552,19 @@ app.delete("/delete/token/:shareToken", function(req, res) {
 
 app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   handleUploadedFile(req, res, config.ACTION_UPDATE_FILE).then(function(message) {
-    res.statusCode = 200
-    res.send({
-      "message": "File updated"
+    s3Pull.pullChunkPathFileFromS3(req.params.fileId).tehn(function(response) {
+      if (response.status == 200) {
+        message.fileData = response.fileData
+        res.status(200).json({
+          message: "File updated"
+        })
+      } else {
+        res.status(response.status).json({
+          message: response.message
+        })
+      }
+    }).fail(function(err) {
+      console.error(err)
     })
     publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify(message))
   }).fail(function(err) {
@@ -570,7 +580,8 @@ app.delete("/delete/:fileId(|/:shareToken)", function(req, res) {
   publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
     action: config.ACTION_DELETE_FILE,
     fileId: req.params.fileId,
-    userId: req.accessToken.payload.userId
+    userId: req.accessToken.payload.userId,
+    s3Params: s3Pull.getS3ParamsForPull("/uploads/files/" + req.params.fileId + ".json")
   }))
 })
 

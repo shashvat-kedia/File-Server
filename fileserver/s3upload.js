@@ -8,7 +8,6 @@ const config = require('./config.js');
 const amqp = require('amqplib/callback_api');
 const hash = require('object-hash');
 const q = require('q');
-const s3Pull = require('./s3Pull.js');
 const redis = require('redis');
 const redisClient = redis.createClient();
 const Readable = require('streams').Readable;
@@ -131,7 +130,7 @@ function consume() {
       } else if (jsonMessage.action == config.ACTION_UPDATE_FILE) {
         updateFile(message, jsonMessage)
       } else if (jsonMessage.action == config.ACTION_DELETE_FILE) {
-        deleteFile(message, jsonMessage.fileId, jsonMessage.userId)
+        deleteFile(message, jsonMessage)
       } else if (jsonmessage.action == config.ACTION_CHUNK_PATH_FILE_UPDATE) {
         uploadChunkPathFile(null, JSON.parse(message.content.toString())).then(function(response) {
           if (response.status == 200) {
@@ -325,16 +324,16 @@ function uploadChunkPathFile(path, data) {
   })
 }
 
-function deleteFile(message, fileId, userId) {
-  S3.deleteObject(s3Pull.getS3ParamsForPull("/uploads/files/" + fileId + ".json"), function(err, data) {
+function deleteFile(message, jsonMessage) {
+  S3.deleteObject(jsonMessage.s3Params, function(err, data) {
     if (err) {
       console.error(err)
     } else {
       con_channel.ack(message)
       publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
         action: config.ACTION_SEND_NOTIF,
-        fileId: fileId,
-        userId: userId,
+        fileId: jsonMessage.fileId,
+        userId: jsonMessage.userId,
         message: "DELETE"
       }))
       console.log("File deleted")
@@ -360,47 +359,38 @@ function sendToS3(message, jsonMessage) {
 }
 
 function updateFile(message, jsonMessage) {
-  s3Pull.pullChunkPathFileFromS3(jsonMessage.fileId).then(function(response) {
-    if (response.status == 200) {
-      createChunksAndProcess(jsonMessage, false).then(function(data) {
-        var opRes = compare(response.chunksPaths, data.chunksPaths)
-        opRes.shares = response.shares
-        uploadSpecificChunks(jsonMessage, opRes.chunksToUpload).then(function(response) {
+  createChunksAndProcess(jsonMessage, false).then(function(data) {
+    var opRes = compare(jsonMessage.fileData.chunksPaths, data.chunksPaths)
+    opRes.shares = jsonMessage.fileData.shares
+    uploadSpecificChunks(jsonMessage, opRes.chunksToUpload).then(function(response) {
+      if (response.status = 200) {
+        console.log("Chunks updated")
+        uploadChunkPathFile(jsonMessage.destPath, {
+          fileId: jsonMessage.fileId,
+          chunkPath: opRes.chunksPath,
+          shares: opRes.shares
+        }).then(function(response) {
           if (response.status = 200) {
-            console.log("Chunks updated")
-            uploadChunkPathFile(jsonMessage.destPath, {
+            redisClient.set("/uploads/files/" + jsonMessage.fileId + ".json", null)
+            con_channel.ack(message)
+            publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
+              action: config.ACTION_SEND_NOTIF,
               fileId: jsonMessage.fileId,
-              chunkPath: opRes.chunksPath,
-              shares: opRes.shares
-            }).then(function(response) {
-              if (response.status = 200) {
-                redisClient.set("/uploads/files/" + jsonMessage.fileId + ".json", null)
-                con_channel.ack(message)
-                publish(config.QUEUE_NAME_NOTIFICATION, JSON.stringify({
-                  action: config.ACTION_SEND_NOTIF,
-                  fileId: jsonMessage.fileId,
-                  userId: jsonMessage.userId,
-                  message: "UPDATE"
-                }))
-                console.log("File updated")
-              }
-            }).fail(function(err) {
-              console.error(err)
-            })
-          } else {
-            //Modify to get the chunks that could not be uploaded and they retry for certain defined no. of times
-            console.log("File not uploaded completely")
+              userId: jsonMessage.userId,
+              message: "UPDATE"
+            }))
+            console.log("File updated")
           }
         }).fail(function(err) {
           console.error(err)
         })
-      }).fail(function(err) {
-        console.error(err)
-      })
-    } else {
-      //Storing them for the time being
-      sendToS3(message, jsonMessage)
-    }
+      } else {
+        //Modify to get the chunks that could not be uploaded and they retry for certain defined no. of times
+        console.log("File not uploaded completely")
+      }
+    }).fail(function(err) {
+      console.error(err)
+    })
   }).fail(function(err) {
     console.error(err)
   })
