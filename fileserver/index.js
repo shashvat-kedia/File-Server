@@ -269,11 +269,10 @@ function handleUploadedFile(req, res, actionType) {
         message.dataBuffer = req.file.buffer
         message.fileId = req.file.originalName.substring(req.file.originalName.lastIndexOf('.') + 1)
       }
+      message.shouldChunk = req.file.size >= config.FILE_SIZE_FOR_CHUNKING ? true : false
       if (actionType == config.ACTION_UPDATE_FILE) {
         message.fileId = req.params.fileId
         message.userId = req.accessToken.payload.userId
-      } else if (actionType == config.ACTION_UPLOAD_FILE) {
-        message.shouldChunk = req.file.size >= config.FILE_SIZE_FOR_CHUNKING ? true : false
       }
       deferred.resolve(message)
     }
