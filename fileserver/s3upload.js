@@ -180,7 +180,8 @@ function createChunksAndProcess(jsonMessage, isUpload) {
   var deferred = q.defer()
   chunkPaths = [path.substring(path.lastIndexOf('.'), path.length)]
   if (jsonMessage.destPath != null) {
-    var readStream = fs.createReadStream(path, { highWaterMark: config.READ_CHUNKSIZE })
+    var highWaterMark = jsonMessage.shouldChunk ? config.READ_CHUNKSIZE : fs.statSync(jsonMessage.destPath)["size"]
+    var readStream = fs.createReadStream(path, { highWaterMark: highWaterMark })
     readStream.on('data', function(chunk) {
       chunkPaths.push(processChunk(chunk.toString(), isUpload))
     })
@@ -194,13 +195,18 @@ function createChunksAndProcess(jsonMessage, isUpload) {
       })
     })
   } else {
-    var limit = parseInt(jsonMessage.dataBuffer.length / config.READ_CHUNKSIZE, 10)
-    if (jsonMessage.dataBuffer.length % config.READ_CHUNKSIZE != 0) {
-      limit++
+    var limit = 1
+    var chunkSize = req.buffer.length
+    if (jsonMessage.shouldChunk) {
+      limit = parseInt(jsonMessage.dataBuffer.length / config.READ_CHUNKSIZE, 10)
+      if (jsonMessage.dataBuffer.length % config.READ_CHUNKSIZE != 0) {
+        limit++
+      }
+      chunkSize = config.READ_CHUNKSIZE
     }
     for (var i = 0; i < limit; i++) {
-      var chunk = jsonMessage.dataBuffer.slice(i * config.READ_CHUNKSIZE, Math.min(jsonMessage.dataBuffer.length,
-        (i + 1) * config.READ_CHUNKSIZE))
+      var chunk = jsonMessage.dataBuffer.slice(i * chunkSize, Math.min(jsonMessage.dataBuffer.length,
+        (i + 1) * config.chunkSize))
       chunkPaths.push(processChunk(chunk.toString(), isUpload))
     }
     deferred.resolve({
