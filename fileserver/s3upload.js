@@ -10,7 +10,6 @@ const hash = require('object-hash');
 const q = require('q');
 const redis = require('redis');
 const redisClient = redis.createClient();
-const Readable = require('streams').Readable;
 const app = express()
 
 const S3 = new AWS.S3(config.AWS_CONFIG)

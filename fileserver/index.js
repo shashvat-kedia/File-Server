@@ -371,7 +371,39 @@ app.post("/text", function(req, res) {
   })
 })
 
-app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
+function getBaseSharePayload(){
+  var deferred = q.defer()
+  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
+    if(response.status == 200){
+      var payload = {
+        fileId: fileId
+      }
+      if(expTimestamp != 0){
+        payload.exp =  Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
+      }
+      if(permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
+        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
+          config.PERMISION_READ : config.PERMISSION_READ_WRITE
+        deferred.resolve({
+          status: 200,
+          payload: payload
+        })
+      } else{
+        deferred.resolve({
+          status: 422,
+          message: "Invalid permission type"
+        })
+      }
+    } else{
+      deferred.redolve(response)
+    }
+  }).fail(function(err){
+    deferred.reject(err)
+  })
+  return deferred.promise
+}
+
+app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
   s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
     if (response.status == 200) {
       var payload = {
@@ -380,8 +412,8 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
       if (req.params.expTimestamp != 0) {
         payload.exp = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
       }
-      if (req.params.permission = config.PERMISSION_READ || req.params.permission == config.PERMISSION_READ_WRITE) {
-        payload['permissionType'] = req.params.permission == config.PERMISION_READ ?
+      if (req.params.permissionType = config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE) {
+        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
           config.PERMISION_READ : config.PERMISSION_READ_WRITE
         const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
         response.fileData.shares.push(shareToken);
@@ -406,6 +438,10 @@ app.get("/share/:fileId/:permission/:expTimestamp", function(req, res) {
   }).fail(function(err) {
     console.error(err)
   })
+})
+
+app.post("/share/user/:fileId",function(req,res){
+
 })
 
 app.get("/shares/:fileId", function(req, res) {
