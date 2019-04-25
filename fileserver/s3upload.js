@@ -350,6 +350,7 @@ function sendToS3(message, jsonMessage) {
   createChunksAndProcess(jsonMessage, true).then(function(response) {
     response.fileId = jsonMessage.destPath != null ? jsonMessage.destPath.substring(path.lastIndexOf('/') + 1,
       jsonMessage.destPath.lastIndexOf('.')) : jsonMessage.fileId
+    response.owner = jsonMessage.fileId
     uploadChunkPathFile(jsonMessage.destPath, response).then(function(response) {
       if (respone.status == 200) {
         con_channel.ack(message)

@@ -270,9 +270,9 @@ function handleUploadedFile(req, res, actionType) {
         message.fileId = req.file.originalName.substring(req.file.originalName.lastIndexOf('.') + 1)
       }
       message.shouldChunk = req.file.size >= config.FILE_SIZE_FOR_CHUNKING ? true : false
+      message.userId = req.accessToken.payload.userId
       if (actionType == config.ACTION_UPDATE_FILE) {
         message.fileId = req.params.fileId
-        message.userId = req.accessToken.payload.userId
       }
       deferred.resolve(message)
     }
@@ -286,39 +286,6 @@ function uploadFileFilter(req, file, callback) {
   } else {
     callback(null, true)
   }
-}
-
-function getBaseSharePayload(fileId,permissionType,expTimestamp){
-  var deferred = q.defer()
-  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
-    if(response.status == 200){
-      var payload = {
-        fileId: fileId
-      }
-      if(expTimestamp != 0){
-        payload.exp =  Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
-      }
-      if(permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
-        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
-          config.PERMISION_READ : config.PERMISSION_READ_WRITE
-        deferred.resolve({
-          status: 200,
-          payload: payload,
-          fileData: response.fileData
-        })
-      } else{
-        deferred.resolve({
-          status: 422,
-          message: "Invalid permission type"
-        })
-      }
-    } else{
-      deferred.resolve(response)
-    }
-  }).fail(function(err){
-    deferred.reject(err)
-  })
-  return deferred.promise
 }
 
 app.use("*", function(req, res, next) {
@@ -405,35 +372,49 @@ app.post("/text", function(req, res) {
 })
 
 app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
-  getBaseSharePayload(req.params.fileId,req.params.permissionType,req.params.expTimestamp).then(function(response){
+	s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
     if(response.status == 200){
-      const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
-        response.fileData.shares.push(shareToken);
-        res.status(200).json({
-          shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
-          shareToken: shareToken
+      var payload = {
+        fileId: req.params.fileId
+      }
+      if(req.params.expTimestamp != 0){
+        payload.exp =  Math.floor(new Date().getTime() / 1000) + req.params.expTimestamp / 1000
+      }
+      if(req.params.permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
+        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
+          config.PERMISION_READ : config.PERMISSION_READ_WRITE
+        const shareToken = jwt.sign(response.payload, config.PRIVATE_KEY)
+       response.fileData.shares.push(shareToken);
+       res.status(200).json({
+         shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
+         shareToken: shareToken
+       })
+       publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+         action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+         data: response.fileData
+       }))
+      } else{
+        deferred.resolve({
+          status: 422,
+          message: "Invalid permission type"
         })
-        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-          action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
-          data: response.fileData
-        }))
+      }
     } else{
       res.status(response.status).json({
         message: response.message
       })
     }
   }).fail(function(err){
-    console.error(err)
+    deferred.reject(err)
   })
 })
 
 app.post("/share/user",function(req,res){
-	getBaseSharePayload(req.body.fileId,req.body.permissionType,0).then(function(response){
+	s3Pull.pullChunkPathFileFromS3(req.body.fileId).then(function(response){
 		if(response.status == 200){
-			const shareToken = jwt.sign(payload,config.PRIVATE_KEY)
 			response.fileData.userShares.push({
 				sharedTo: req.body.userId,
-				shareToken: shareToken
+				permissionType: req.body.permissionType
 			})
 			req.status(200).json({
 				message: "Shared with " + req.body.userId
@@ -611,7 +592,46 @@ app.delete("/delete/token/:shareToken", function(req, res) {
   })
 })
 
-app.put("/update/:fileId(|/:shareToken)", function(req, res) {
+app.use("/(pull|chunk|update|delete)/:fileId(/:shareToken|/:chunkId(/:shareToken|)|)",function(req,res,next){
+	s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response){
+		if(response.status == 200){
+			var isValid = false
+			if(response.fileData.owner == req.accessToken.payload.userId){
+				isValid = true
+			} else{
+				var shareToken = null
+				for(var i=0;i<response.fileData.userShares.length;i++){
+					if(response.fileData.userShares[i].sharedTo == req.accessToken.payload.userId){
+						shareToken = response.fileData.userShares[i].shareToken
+						break;
+					}
+				}
+				if(shareToken != null){
+					if(req.method != "HEAD" && shareToken.permissionType == config.PERMISSION_READ && req.path != "/pull"){
+						isValid = false
+					} else{
+						isValid = true
+					}
+				}
+			}
+			if(isValid){
+				next()
+			} else{
+				res.status(403).json({
+					message: 'Forbidden. Permission required'
+				})
+			}
+		} else{
+			res.status(response.status).json({
+				message: response.message
+			})
+		}
+	}).fail(function(err){
+		console.error(err)
+	})
+})
+
+app.put("/update/:fileId(/:shareToken|)", function(req, res) {
   handleUploadedFile(req, res, config.ACTION_UPDATE_FILE).then(function(message) {
     s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
       if (response.status == 200) {
@@ -633,7 +653,7 @@ app.put("/update/:fileId(|/:shareToken)", function(req, res) {
   })
 })
 
-app.delete("/delete/:fileId(|/:shareToken)", function(req, res) {
+app.delete("/delete/:fileId(/:shareToken|)", function(req, res) {
   res.statusCode = 200
   res.send({
     "message": "File deleted"
