@@ -288,6 +288,39 @@ function uploadFileFilter(req, file, callback) {
   }
 }
 
+function getBaseSharePayload(fileId,permissionType,expTimestamp){
+  var deferred = q.defer()
+  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
+    if(response.status == 200){
+      var payload = {
+        fileId: fileId
+      }
+      if(expTimestamp != 0){
+        payload.exp =  Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
+      }
+      if(permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
+        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
+          config.PERMISION_READ : config.PERMISSION_READ_WRITE
+        deferred.resolve({
+          status: 200,
+          payload: payload,
+          fileData: response.fileData
+        })
+      } else{
+        deferred.resolve({
+          status: 422,
+          message: "Invalid permission type"
+        })
+      }
+    } else{
+      deferred.resolve(response)
+    }
+  }).fail(function(err){
+    deferred.reject(err)
+  })
+  return deferred.promise
+}
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] != null) {
     var authorizationHeader = req.headers["authorization"]
@@ -371,51 +404,10 @@ app.post("/text", function(req, res) {
   })
 })
 
-function getBaseSharePayload(){
-  var deferred = q.defer()
-  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
-    if(response.status == 200){
-      var payload = {
-        fileId: fileId
-      }
-      if(expTimestamp != 0){
-        payload.exp =  Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
-      }
-      if(permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
-        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
-          config.PERMISION_READ : config.PERMISSION_READ_WRITE
-        deferred.resolve({
-          status: 200,
-          payload: payload
-        })
-      } else{
-        deferred.resolve({
-          status: 422,
-          message: "Invalid permission type"
-        })
-      }
-    } else{
-      deferred.redolve(response)
-    }
-  }).fail(function(err){
-    deferred.reject(err)
-  })
-  return deferred.promise
-}
-
 app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
-  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
-    if (response.status == 200) {
-      var payload = {
-        fileId: req.params.fileId
-      }
-      if (req.params.expTimestamp != 0) {
-        payload.exp = Math.floor(new Date().getTime() / 1000) + expTimestamp / 1000
-      }
-      if (req.params.permissionType = config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE) {
-        payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
-          config.PERMISION_READ : config.PERMISSION_READ_WRITE
-        const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
+  getBaseSharePayload(req.params.fileId,req.params.permissionType,req.params.expTimestamp).then(function(response){
+    if(response.status == 200){
+      const shareToken = jwt.sign(payload, config.PRIVATE_KEY)
         response.fileData.shares.push(shareToken);
         res.status(200).json({
           shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
@@ -425,23 +417,39 @@ app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
           action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
           data: response.fileData
         }))
-      } else {
-        res.status(422).json({
-          message: "Invalid permission type"
-        })
-      }
-    } else {
+    } else{
       res.status(response.status).json({
         message: response.message
       })
     }
-  }).fail(function(err) {
+  }).fail(function(err){
     console.error(err)
   })
 })
 
-app.post("/share/user/:fileId",function(req,res){
-
+app.post("/share/user",function(req,res){
+	getBaseSharePayload(req.body.fileId,req.body.permissionType,0).then(function(response){
+		if(response.status == 200){
+			const shareToken = jwt.sign(payload,config.PRIVATE_KEY)
+			response.fileData.userShares.push({
+				sharedTo: req.body.userId,
+				shareToken: shareToken
+			})
+			req.status(200).json({
+				message: "Shared with " + req.body.userId
+			})
+			publish(config.QUEUE_NAME_S3_SERVICE,JSON.stringify({
+				action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+				data: response.fileData
+			}))
+		} else{
+			res.status(response.status).json({
+				message: response.message
+			})
+		}
+	}).fail(function(err){
+		console.error(err)
+	})
 })
 
 app.get("/shares/:fileId", function(req, res) {
@@ -458,6 +466,22 @@ app.get("/shares/:fileId", function(req, res) {
   }).fail(function(err) {
     console.error(err)
   })
+})
+
+app.get("/share/user/:fileId",function(req,res){
+	s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response){
+		if(response.status == 200){
+			res.status(200).json({
+				userShares: response.fileData.userShares
+			})
+		} else{
+			res.status(response.status).json({
+				message: response.message
+			})
+		}
+	}).fail(function(err){
+		console.error(err)
+	})
 })
 
 app.get("/chunks/:fileId", function(req, res) {
