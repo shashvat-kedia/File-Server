@@ -11,6 +11,7 @@ const hash = require('object-hash');
 const randomAccessFile = require('random-access-file');
 const mime = require('mime-types');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
 const app = express();
 
 var rmq_connection = null
@@ -26,6 +27,10 @@ const STORAGE_TYPE_DISK = STORAGE_TYPE_MEMORY + 1;
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
+/*app.use(helmet.hsts({
+  maxAge: config.HSTS_MAX_AGE
+}))*/
+app.use(helmet.hidePoweredBy())
 
 function getTimestamp() {
   return Math.round((new Date()).getTime()) / 1000
@@ -370,65 +375,65 @@ app.post("/text", function(req, res) {
 })
 
 app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
-	s3Pull.pullChunkPathFileFromS3(fileId).then(function(response){
-    if(response.status == 200){
+  s3Pull.pullChunkPathFileFromS3(fileId).then(function(response) {
+    if (response.status == 200) {
       var payload = {
         fileId: req.params.fileId
       }
-      if(req.params.expTimestamp != 0){
-        payload.exp =  Math.floor(new Date().getTime() / 1000) + req.params.expTimestamp / 1000
+      if (req.params.expTimestamp != 0) {
+        payload.exp = Math.floor(new Date().getTime() / 1000) + req.params.expTimestamp / 1000
       }
-      if(req.params.permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE){
+      if (req.params.permissionType == config.PERMISSION_READ || req.params.permissionType == config.PERMISSION_READ_WRITE) {
         payload['permissionType'] = req.params.permissionType == config.PERMISION_READ ?
           config.PERMISION_READ : config.PERMISSION_READ_WRITE
         const shareToken = jwt.sign(response.payload, config.PRIVATE_KEY)
-       response.fileData.shares.push(shareToken);
-       res.status(200).json({
-         shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
-         shareToken: shareToken
-       })
-       publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
-         action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
-         data: response.fileData
-       }))
-      } else{
+        response.fileData.shares.push(shareToken);
+        res.status(200).json({
+          shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
+          shareToken: shareToken
+        })
+        publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+          action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+          data: response.fileData
+        }))
+      } else {
         deferred.resolve({
           status: 422,
           message: "Invalid permission type"
         })
       }
-    } else{
+    } else {
       res.status(response.status).json({
         message: response.message
       })
     }
-  }).fail(function(err){
+  }).fail(function(err) {
     deferred.reject(err)
   })
 })
 
-app.post("/share/user",function(req,res){
-	s3Pull.pullChunkPathFileFromS3(req.body.fileId).then(function(response){
-		if(response.status == 200){
-			response.fileData.userShares.push({
-				sharedTo: req.body.userId,
-				permissionType: req.body.permissionType
-			})
-			req.status(200).json({
-				message: "Shared with " + req.body.userId
-			})
-			publish(config.QUEUE_NAME_S3_SERVICE,JSON.stringify({
-				action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
-				data: response.fileData
-			}))
-		} else{
-			res.status(response.status).json({
-				message: response.message
-			})
-		}
-	}).fail(function(err){
-		console.error(err)
-	})
+app.post("/share/user", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(req.body.fileId).then(function(response) {
+    if (response.status == 200) {
+      response.fileData.userShares.push({
+        sharedTo: req.body.userId,
+        permissionType: req.body.permissionType
+      })
+      req.status(200).json({
+        message: "Shared with " + req.body.userId
+      })
+      publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
+        action: config.ACTION_CHUNK_PATH_FILE_UPDATE,
+        data: response.fileData
+      }))
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
 })
 
 app.get("/shares/:fileId", function(req, res) {
@@ -447,20 +452,20 @@ app.get("/shares/:fileId", function(req, res) {
   })
 })
 
-app.get("/share/user/:fileId",function(req,res){
-	s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response){
-		if(response.status == 200){
-			res.status(200).json({
-				userShares: response.fileData.userShares
-			})
-		} else{
-			res.status(response.status).json({
-				message: response.message
-			})
-		}
-	}).fail(function(err){
-		console.error(err)
-	})
+app.get("/share/user/:fileId", function(req, res) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      res.status(200).json({
+        userShares: response.fileData.userShares
+      })
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
 })
 
 app.get("/chunks/:fileId", function(req, res) {
@@ -590,43 +595,43 @@ app.delete("/delete/token/:shareToken", function(req, res) {
   })
 })
 
-app.use("/(pull|chunk|update|delete)/:fileId(/:shareToken|/:chunkId(/:shareToken|)|)",function(req,res,next){
-	s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response){
-		if(response.status == 200){
-			var isValid = false
-			if(response.fileData.owner == req.accessToken.payload.userId){
-				isValid = true
-			} else{
-				var shareToken = null
-				for(var i=0;i<response.fileData.userShares.length;i++){
-					if(response.fileData.userShares[i].sharedTo == req.accessToken.payload.userId){
-						shareToken = response.fileData.userShares[i].shareToken
-						break;
-					}
-				}
-				if(shareToken != null){
-					if(req.method != "HEAD" && shareToken.permissionType == config.PERMISSION_READ && req.path != "/pull"){
-						isValid = false
-					} else{
-						isValid = true
-					}
-				}
-			}
-			if(isValid){
-				next()
-			} else{
-				res.status(403).json({
-					message: "Forbidden. Permission required"
-				})
-			}
-		} else{
-			res.status(response.status).json({
-				message: response.message
-			})
-		}
-	}).fail(function(err){
-		console.error(err)
-	})
+app.use("/(pull|chunk|update|delete)/:fileId(/:shareToken|/:chunkId(/:shareToken|)|)", function(req, res, next) {
+  s3Pull.pullChunkPathFileFromS3(req.params.fileId).then(function(response) {
+    if (response.status == 200) {
+      var isValid = false
+      if (response.fileData.owner == req.accessToken.payload.userId) {
+        isValid = true
+      } else {
+        var shareToken = null
+        for (var i = 0; i < response.fileData.userShares.length; i++) {
+          if (response.fileData.userShares[i].sharedTo == req.accessToken.payload.userId) {
+            shareToken = response.fileData.userShares[i].shareToken
+            break;
+          }
+        }
+        if (shareToken != null) {
+          if (req.method != "HEAD" && shareToken.permissionType == config.PERMISSION_READ && req.path != "/pull") {
+            isValid = false
+          } else {
+            isValid = true
+          }
+        }
+      }
+      if (isValid) {
+        next()
+      } else {
+        res.status(403).json({
+          message: "Forbidden. Permission required"
+        })
+      }
+    } else {
+      res.status(response.status).json({
+        message: response.message
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
 })
 
 app.put("/update/:fileId(/:shareToken|)", function(req, res) {
