@@ -9,6 +9,10 @@ const config = require('./config.js');
 const q = require('q');
 const app = express()
 
+//Handle logout (For this support to blacklist JWT has to be added which is not so easy to perform in a distributer enviornment 
+//thus to verify weather each JWT is valid or not DB will have to be accessed thus increasing the overall time to process a request
+//this sort of goes againt the reason why we use JWT that is stateless authentication) 
+
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
@@ -187,6 +191,41 @@ app.get("/accesstoken/:token", function(req, res) {
   }).fail(function(err) {
     console.log(err)
   })
+})
+
+app.post("/password/change", function(req, res) {
+  mongo.getAuthCredentials(req.body.userId).then(function(response) {
+    if (response.status == 200) {
+      if (response.credentials.passwordHash == sha512(res.body.password, response.credentials.salt)) {
+        const newSalt = getSalt(config.SALT_LENGTH)
+        const newPasswordHash = sha512(req.body.newPassword, newSalt)
+        mongo.updateAuthCredentials(req.body.userId, newPasswordHash, newSalt).then(function(response) {
+          if (response.status == 200) {
+            res.status(200).json({
+              message: "Password updated"
+            })
+            //Invalidate all JWT for this account
+          } else {
+            res.status(response.status).json({
+              message: response.message
+            })
+          }
+        }).fail(function(err) {
+          console.error(err)
+        })
+      } else {
+        res.status(401).json({
+          message: "Incorrect password"
+        })
+      }
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
+
+app.post("/logout/:token", function(req, res) {
+
 })
 
 /*app.use("*", function(req, res, next) {

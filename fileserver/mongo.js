@@ -37,6 +37,30 @@ module.exports = {
     })
     return deferred.promise
   },
+  updateAuthCredentials: function updateAuthCredentials(userId, newPasswordHash, newSalt) {
+    var deferred = q.defer()
+    dbo.collection(config.AUTH_COLLECTION_NAME).updateOne({ _id: userId }, {
+      $set: {
+        passwordHash: newPasswordHash,
+        salt: newSalt
+      }
+    }, function(err, result) {
+      if (err) {
+        deferred.reject(err)
+      }
+      if (result.result.n == 1) {
+        deferred.resolve({
+          status: 200
+        })
+      } else {
+        deferred.resolve({
+          status: 404,
+          message: "No account found"
+        })
+        //Logout by default here
+      }
+    })
+  },
   getAuthCredentials: function getAuthCredentials(username) {
     var deferred = q.defer()
     dbo.collection(config.AUTH_COLLECTION_NAME).findOne({ username: username }, function(err, result) {

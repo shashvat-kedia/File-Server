@@ -23,8 +23,6 @@ const PORT = 8080 || process.env.PORT;
 const STORAGE_TYPE_MEMORY = 1;
 const STORAGE_TYPE_DISK = STORAGE_TYPE_MEMORY + 1;
 
-app.use(express.static(__dirname + "/uploads"))
-
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
@@ -618,7 +616,7 @@ app.use("/(pull|chunk|update|delete)/:fileId(/:shareToken|/:chunkId(/:shareToken
 				next()
 			} else{
 				res.status(403).json({
-					message: 'Forbidden. Permission required'
+					message: "Forbidden. Permission required"
 				})
 			}
 		} else{
