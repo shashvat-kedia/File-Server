@@ -60,6 +60,7 @@ module.exports = {
         //Logout by default here
       }
     })
+    return deferred.promise
   },
   getAuthCredentials: function getAuthCredentials(username) {
     var deferred = q.defer()

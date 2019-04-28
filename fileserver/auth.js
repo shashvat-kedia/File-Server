@@ -193,6 +193,10 @@ app.get("/accesstoken/:token", function(req, res) {
   })
 })
 
+function clearAuthTokens(userId) {
+
+}
+
 app.post("/password/change", function(req, res) {
   mongo.getAuthCredentials(req.body.userId).then(function(response) {
     if (response.status == 200) {
@@ -201,6 +205,7 @@ app.post("/password/change", function(req, res) {
         const newPasswordHash = sha512(req.body.newPassword, newSalt)
         mongo.updateAuthCredentials(req.body.userId, newPasswordHash, newSalt).then(function(response) {
           if (response.status == 200) {
+            clearAuthTokens(req.body.userId)
             res.status(200).json({
               message: "Password updated"
             })
