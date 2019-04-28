@@ -2,7 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const config = require('./config.js');
@@ -19,15 +19,16 @@ app.use(cors())
 
 const PORT = 27327 || process.env.PORT
 
-function getSalt(length) {
-  return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length)
-}
-
-function sha512(password, salt) {
-  var hash = crypto.createHmac('sha512', salt)
-  hash.update(password)
-  var value = hash.digest('hex');
-  return value
+function generatePasswordHash(password, salt) {
+  var passSalt = salt
+  if (passSalt == null) {
+    salt = bcrypt.genSalt(config.SALT_ROUNDS).then(function(response) {
+      passSalt = response
+    }).fail(function(err) {
+      console.error(err)
+    })
+  }
+  return bcrypt.hash(password, passSalt)
 }
 
 function generateJWT(payload) {
@@ -64,54 +65,18 @@ function isValid(username, password) {
 
 app.post("/signup", function(req, res) {
   if (isValid(req.body.username, req.body.password)) {
-    var salt = getSalt(config.SALT_LENGTH)
-    var passwordHash = sha512(req.body.password)
-    mongo.insertAuthCredentials({
-      username: req.body.username,
-      salt: salt,
-      passwordHash: passwordHash
-    }).then(function(response) {
-      if (response.status == 200) {
-        generateRefreshToken(response.id).then(function(result) {
-          if (result.status == 200) {
-            res.status(200).json({
-              accessToken: generateJWT({
-                userId: response.id,
-                exp: config.JWT_EXP
-              }),
-              refreshToken: result.refreshToken,
-              tokenType: "JWT"
-            })
-          } else {
-            res.status(result.status).json({
-              message: result.message
-            })
-          }
-        }).fail(function(err) {
-          console.error(err)
-        })
-      } else {
-        res.status(response.status).json({
-          message: response.message
-        })
-      }
-    }).fail(function(err) {
-      console.error(err)
-    })
-  }
-})
-
-app.post("/login", function(req, res) {
-  if (isValid(req.body.username, req.body.password)) {
-    mongo.getAuthCredentials(req.body.username).then(function(response) {
-      if (response.status == 200) {
-        if (response.credentials.passwordHash == sha512(req.body.password, response.credentials.salt)) {
-          console.log(response.credentials.id)
-          generateRefreshToken(response.credentials.id).then(function(result) {
+    generatePasswordHash(req.body.password, null).then(function(passwordHash) {
+      mongo.insertAuthCredentials({
+        username: req.body.username,
+        salt: salt,
+        passwordHash: passwordHash
+      }).then(function(response) {
+        if (response.status == 200) {
+          generateRefreshToken(response.id).then(function(result) {
             if (result.status == 200) {
               res.status(200).json({
                 accessToken: generateJWT({
-                  userId: response.credentials.id,
+                  userId: response.id,
                   exp: config.JWT_EXP
                 }),
                 refreshToken: result.refreshToken,
@@ -126,10 +91,52 @@ app.post("/login", function(req, res) {
             console.error(err)
           })
         } else {
-          res.status(403).json({
-            message: "Invalid credentials"
+          res.status(response.status).json({
+            message: response.message
           })
         }
+      }).fail(function(err) {
+        console.error(err)
+      })
+    }).fail(function(err) {
+      console.error(err)
+    })
+  }
+})
+
+app.post("/login", function(req, res) {
+  if (isValid(req.body.username, req.body.password)) {
+    mongo.getAuthCredentials(req.body.username).then(function(response) {
+      if (response.status == 200) {
+        generatePassswordHash(req.body.password, response.credentials.salt).then(function(passwordHash) {
+          if (response.credentials.passwordHash == passwordHash) {
+            console.log(response.credentials.id)
+            generateRefreshToken(response.credentials.id).then(function(result) {
+              if (result.status == 200) {
+                res.status(200).json({
+                  accessToken: generateJWT({
+                    userId: response.credentials.id,
+                    exp: config.JWT_EXP
+                  }),
+                  refreshToken: result.refreshToken,
+                  tokenType: "JWT"
+                })
+              } else {
+                res.status(result.status).json({
+                  message: result.message
+                })
+              }
+            }).fail(function(err) {
+              console.error(err)
+            })
+          } else {
+            res.status(403).json({
+              message: "Invalid credentials"
+            })
+          }
+        }).fail(function(err) {
+          console.error(err)
+        })
       } else {
         res.json(response.status).json({
           message: response.message
@@ -200,29 +207,35 @@ function clearAuthTokens(userId) {
 app.post("/password/change", function(req, res) {
   mongo.getAuthCredentials(req.body.userId).then(function(response) {
     if (response.status == 200) {
-      if (response.credentials.passwordHash == sha512(res.body.password, response.credentials.salt)) {
-        const newSalt = getSalt(config.SALT_LENGTH)
-        const newPasswordHash = sha512(req.body.newPassword, newSalt)
-        mongo.updateAuthCredentials(req.body.userId, newPasswordHash, newSalt).then(function(response) {
-          if (response.status == 200) {
-            clearAuthTokens(req.body.userId)
-            res.status(200).json({
-              message: "Password updated"
+      generatePasswordHash(req.body.password, response.credentials.salt).then(function(passwordHash) {
+        if (response.credentials.passwordHash == passwordHash) {
+          generatePasswordHash(req.body.newPassword, null).then(function(newPasswordHash) {
+            mongo.updateAuthCredentials(req.body.userId, newPasswordHash, newSalt).then(function(response) {
+              if (response.status == 200) {
+                clearAuthTokens(req.body.userId)
+                res.status(200).json({
+                  message: "Password updated"
+                })
+                //Invalidate all JWT for this account
+              } else {
+                res.status(response.status).json({
+                  message: response.message
+                })
+              }
+            }).fail(function(err) {
+              console.error(err)
             })
-            //Invalidate all JWT for this account
-          } else {
-            res.status(response.status).json({
-              message: response.message
-            })
-          }
-        }).fail(function(err) {
-          console.error(err)
-        })
-      } else {
-        res.status(401).json({
-          message: "Incorrect password"
-        })
-      }
+          }).fail(function(err) {
+            console.error(err)
+          })
+        } else {
+          res.status(401).json({
+            message: "Incorrect password"
+          })
+        }
+      }).fail(function(err) {
+        console.error(err)
+      })
     }
   }).fail(function(err) {
     console.error(err)

@@ -57,7 +57,6 @@ module.exports = {
           status: 404,
           message: "No account found"
         })
-        //Logout by default here
       }
     })
     return deferred.promise
