@@ -161,6 +161,17 @@ function putLevelDbObject(key, val) {
   return deferred.promise
 }
 
+function delLevelDbObject(key) {
+  const deferred = q.defer()
+  grpcClient.del(key, function(err, val) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(true)
+  })
+  return deferred.promise
+}
+
 app.post("/signup", function(req, res) {
   if (isValid(req.body.username, req.body.password)) {
     generatePasswordHash(req.body.password, null).then(function(passwordHash) {
@@ -172,13 +183,20 @@ app.post("/signup", function(req, res) {
         if (response.status == 200) {
           generateRefreshToken(response.id).then(function(result) {
             if (result.status == 200) {
-              res.status(200).json({
-                accessToken: generateJWT({
-                  userId: response.id,
-                  exp: config.JWT_EXP
-                }),
-                refreshToken: result.refreshToken,
-                tokenType: "JWT"
+              const accessToken = generateJWT({
+                userId: response.id,
+                exp: config.JWT_EXP
+              })
+              putLevelDbObject(response.id + ":" + accessToken, accessToken).then(function(isSuccessfull) {
+                if (isSuccessfull) {
+                  res.status(200).json({
+                    accessToken: accessToken,
+                    refreshToken: result.refreshToken,
+                    tokenType: "JWT"
+                  })
+                }
+              }).fail(function(err) {
+                console.error(ReferenceError)
               })
             } else {
               res.status(result.status).json({
@@ -211,13 +229,20 @@ app.post("/login", function(req, res) {
             console.log(response.credentials.id)
             generateRefreshToken(response.credentials.id).then(function(result) {
               if (result.status == 200) {
-                res.status(200).json({
-                  accessToken: generateJWT({
-                    userId: response.credentials.id,
-                    exp: config.JWT_EXP
-                  }),
-                  refreshToken: result.refreshToken,
-                  tokenType: "JWT"
+                const accessToken = generateJWT({
+                  userId: response.credentials.id,
+                  exp: config.JWT_EXP
+                })
+                putLevelDbObject(response.id + ":" + accessToken, accessToken).then(function(isSuccessfull) {
+                  if (isSuccessfull) {
+                    res.status(200).json({
+                      accessToken: accessToken,
+                      refreshToken: result.refreshToken,
+                      tokenType: "JWT"
+                    })
+                  }
+                }).fail(function(err) {
+                  console.error(ReferenceError)
                 })
               } else {
                 res.status(result.status).json({

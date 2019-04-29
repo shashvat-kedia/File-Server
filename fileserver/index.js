@@ -305,20 +305,6 @@ function getLevelDBObject(key) {
   return deferred.promise
 }
 
-function putLevelDbObject(key, val) {
-  const deferred = q.defer()
-  grpcClient.put({
-    key: key,
-    content: { jwt: val }
-  }, function(err, val) {
-    if (err) {
-      deferred.reject(err)
-    }
-    deferred.resolve(true)
-  })
-  return deferred.promise
-}
-
 function delLevelDbObject(key) {
   const deferred = q.defer()
   grpcClient.del(key, function(err, val) {
@@ -336,29 +322,47 @@ app.use("*", function(req, res, next) {
     if (authorizationHeader.startsWith("Bearer:")) {
       var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
         authorizationHeader.length).trim()
-      jwt.verify(accessToken,
-        config.PRIVATE_KEY, {
-          maxAge: config.JWT_EXP,
-          clockTimestamp: new Date().getTime() / 1000
-        }, function(err, payload) {
-          if (err) {
-            if (err.name == "TokenExpiredError") {
-              res.status(400).json({
-                message: "Access token expired"
-              })
-            } else if (err.name == "JSONWebTokenError") {
-              res.status(400).json({
-                message: "Malformed Access token"
-              })
-            } else {
-              res.status(400).json({
-                message: "Invalid Access token"
-              })
-            }
-          }
-          req.accessToken = jwt.decode(accessToken, { complete: true })
-          next()
-        })
+      var decoded = jwt.decode(accessToken)
+      getLevelDBObject(decoded.payload.userId + ":" + accessToken).then(function(levelDBObject) {
+        if (levelDBObject == null) {
+          jwt.verify(accessToken,
+            config.PRIVATE_KEY, {
+              maxAge: config.JWT_EXP,
+              clockTimestamp: new Date().getTime() / 1000
+            }, function(err, payload) {
+              if (err) {
+                if (err.name == "TokenExpiredError") {
+                  res.status(401).json({
+                    message: "Access token expired"
+                  })
+                } else if (err.name == "JSONWebTokenError") {
+                  res.status(401).json({
+                    message: "Malformed Access token"
+                  })
+                } else {
+                  res.status(401).json({
+                    message: "Invalid Access token"
+                  })
+                }
+                delLevelDbObject(payload.userId + ":" + accessToken).then(function(isSuccessfull) {
+                  if (isSuccessfull) {
+                    console.log("Invalid token removed from blacklist")
+                  }
+                }).fail(function(err) {
+                  console.error(err)
+                })
+              }
+              req.accessToken = jwt.decode(accessToken, { complete: true })
+              next()
+            })
+        } else {
+          res.status(403).json({
+            message: "Expired Access token"
+          })
+        }
+      }).fail(function(err) {
+        console.error(err)
+      })
     } else {
       res.status(400).json({
         message: "Invalid token"
@@ -428,7 +432,7 @@ app.get("/share/:fileId/:permissionType/:expTimestamp", function(req, res) {
         const shareToken = jwt.sign(response.payload, config.PRIVATE_KEY)
         response.fileData.shares.push(shareToken);
         res.status(200).json({
-          shareLink: "https://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
+          shareLink: "http://" + config.HOSTNAME + "/pull/" + req.params.fileId + "/" + shareToken,
           shareToken: shareToken
         })
         publish(config.QUEUE_NAME_S3_SERVICE, JSON.stringify({
