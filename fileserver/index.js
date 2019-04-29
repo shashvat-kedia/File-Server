@@ -319,6 +319,17 @@ function putLevelDbObject(key, val) {
   return deferred.promise
 }
 
+function delLevelDbObject(key) {
+  const deferred = q.defer()
+  grpcClient.del(key, function(err, val) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(true)
+  })
+  return deferred.promise
+}
+
 app.use("*", function(req, res, next) {
   if (req.headers["authorization"] != null) {
     var authorizationHeader = req.headers["authorization"]

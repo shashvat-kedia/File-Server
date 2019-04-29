@@ -14,7 +14,7 @@ server.start()
 server.addService(levelDBObjProto.LevelDBService.service, {
   get: function(call, callback) {
     const key = call.request
-    db.get(new Buffer(key), function(err, value) {
+    db.get(key, function(err, value) {
       if (err) {
         return console.error(err)
       }
@@ -26,11 +26,20 @@ server.addService(levelDBObjProto.LevelDBService.service, {
   },
   put: function(call, callback) {
     const data = call.request
-    db.put(new Buffer(data.key), data.content, function(err) {
+    db.put(key, data.content, function(err) {
       if (err) {
         return console.error(err)
       }
-      callback(null, null)
+      callback(null, true)
+    })
+  },
+  del: function(call, callback) {
+    const key = call.request
+    db.del(key, function(err) {
+      if (err) {
+        return console.error(err)
+      }
+      callback(null, true)
     })
   }
 })

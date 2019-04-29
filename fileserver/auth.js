@@ -314,7 +314,6 @@ app.post("/password/change", function(req, res) {
                 res.status(200).json({
                   message: "Password updated"
                 })
-                //Invalidate all JWT for this account
               } else {
                 res.status(response.status).json({
                   message: response.message
