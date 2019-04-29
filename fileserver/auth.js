@@ -7,6 +7,9 @@ const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const config = require('./config.js');
 const q = require('q');
+const grpc = require('grpc');
+const LevelDBService = grpc.load(config.LEVEL_DB_OBJ_PROTO_PATH).LevelDBService;
+const grpcClient = new LevelDBService(config.HOST_NAME + ":" + config.LEVEL_DB_GRPC_PORT, grpc.credentials.createInsecure());
 const app = express()
 
 //Handle logout (For this support to blacklist JWT has to be added which is not so easy to perform in a distributer enviornment 
@@ -61,6 +64,31 @@ function generateRefreshToken(id) {
 
 function isValid(username, password) {
   return true
+}
+
+function getLevelDBObject(key) {
+  const deferred = q.defer()
+  grpcClient.get(key, function(err, object) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(object.content.jwt)
+  })
+  return deferred.promise
+}
+
+function putLevelDbObject(key, val) {
+  const deferred = q.defer()
+  grpcClient.put({
+    key: key,
+    content: { jwt: val }
+  }, function(err, val) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(true)
+  })
+  return deferred.promise
 }
 
 app.post("/signup", function(req, res) {
