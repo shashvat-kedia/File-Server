@@ -7,6 +7,7 @@ const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const config = require('./config.js');
 const q = require('q');
+const amqp = require('amqplib/callback_api');
 const grpc = require('grpc');
 const LevelDBService = grpc.load(config.LEVEL_DB_OBJ_PROTO_PATH).LevelDBService;
 const grpcClient = new LevelDBService(config.HOST_NAME + ":" + config.LEVEL_DB_GRPC_PORT, grpc.credentials.createInsecure());
@@ -16,11 +17,80 @@ const app = express()
 //thus to verify weather each JWT is valid or not DB will have to be accessed thus increasing the overall time to process a request
 //this sort of goes againt the reason why we use JWT that is stateless authentication) 
 
+var rmq_connection = null
+var pub_channel = null
+var offlinePubQueue = []
+
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
 
 const PORT = 27327 || process.env.PORT
+
+function connectToRMQ() {
+  amqp.connect(config.RMQ_URL, function(err, con) {
+    if (err) {
+      console.error("RMQ Error:- " + err.message)
+      return setTimeout(connectToRMQ, 1000)
+    }
+    con.on("error", function(err) {
+      if (err.message != "Connection closing") {
+        console.error("RMQ Error:- " + err.message)
+        throw err
+      }
+    })
+    con.on("close", function(err) {
+      console.error("RMQ Error:- " + err.message)
+      console.info("Retrying...")
+      return setTimeout(connectToRMQ(), 1000)
+    })
+    console.log("RMQ connected")
+    rmq_connection = con
+    startPublisher()
+  })
+}
+
+function startPublisher() {
+  rmq_connection.createConfirmChannel(function(err, ch) {
+    if (err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    }
+    ch.on("error", function(err) {
+      console.error("RMQ Error:- " + err.message)
+      return
+    })
+    ch.on("close", function(err) {
+      console.error("RMQ Error:- " + err)
+      return
+    })
+    pub_channel = ch
+    console.log("Publisher started")
+    if (offlinePubQueue != null) {
+      for (var i = 0; i < offlinePubQueue.length; i++) {
+        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
+      }
+    }
+    offlinePubQueue = []
+  })
+}
+
+function publish(queueName, content) {
+  if (pub_channel != null) {
+    try {
+      pub_channel.assertQueue(queueName, { durable: false })
+      pub_channel.sendToQueue(queueName, new Buffer(content))
+      console.log("Message published to RMQ")
+    }
+    catch (exception) {
+      console.error("Publisher Exception:- " + exception.message)
+      offlinePubQueue.push({
+        content: content,
+        queueName: queueName
+      })
+    }
+  }
+}
 
 function generatePasswordHash(password, salt) {
   var passSalt = salt
