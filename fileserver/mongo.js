@@ -104,9 +104,10 @@ module.exports = {
     })
     return deferred.promise
   },
-  saveRefreshToken: function saveRefreshToken(refreshToken) {
+  saveRefreshToken: function saveRefreshToken(userId, refreshToken) {
     var deferred = q.defer()
     dbo.collection(config.REFRESH_TOKEN_COLLECTION_NAME).insertOne({
+      userId: userId,
       refreshToken: refreshToken
     }, function(err, result) {
       if (err) {
@@ -117,7 +118,7 @@ module.exports = {
     })
     return deferred.promise
   },
-  deleteRefreshToken: function deleteRefreshToken(refreshToken) {
+  deleteOneRefreshToken: function deleteOneRefreshToken(refreshToken) {
     var deferred = q.defer()
     dbo.collection(config.REFRESH_TOKEN_COLLECTION_NAME).deleteOne({ refreshToken: refreshToken }, function(err, result) {
       if (err) {
@@ -131,5 +132,19 @@ module.exports = {
       }
     })
     return deferred.promise
+  },
+  deleteManyRefreshToken: function deleteManyRefreshToken(userId) {
+    var deferred = q.defer()
+    dbo.collection(config.REFRESH_TOKEN_COLLECTION_NAME).deleteMany({ userId: userId }, function(err, result) {
+      if (err) {
+        console.error(err)
+        deferred.reject(err)
+      }
+      if (result.result.ok == 1) {
+        deferred.resolve(true)
+      } else {
+        deferred.resolve(false)
+      }
+    })
   }
 }

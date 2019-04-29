@@ -344,8 +344,8 @@ app.use("*", function(req, res, next) {
                     message: "Invalid Access token"
                   })
                 }
-                delLevelDbObject(payload.userId + ":" + accessToken).then(function(isSuccessfull) {
-                  if (isSuccessfull) {
+                delLevelDbObject(payload.userId + ":" + accessToken).then(function(isSuccessful) {
+                  if (isSuccessful) {
                     console.log("Invalid token removed from blacklist")
                   }
                 }).fail(function(err) {

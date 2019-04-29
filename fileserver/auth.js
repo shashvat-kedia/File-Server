@@ -7,90 +7,16 @@ const speakeasy = require('speakeasy');
 const mongo = require('./mongo.js');
 const config = require('./config.js');
 const q = require('q');
-const amqp = require('amqplib/callback_api');
 const grpc = require('grpc');
 const LevelDBService = grpc.load(config.LEVEL_DB_OBJ_PROTO_PATH).LevelDBService;
 const grpcClient = new LevelDBService(config.HOST_NAME + ":" + config.LEVEL_DB_GRPC_PORT, grpc.credentials.createInsecure());
 const app = express()
-
-//Handle logout (For this support to blacklist JWT has to be added which is not so easy to perform in a distributer enviornment 
-//thus to verify weather each JWT is valid or not DB will have to be accessed thus increasing the overall time to process a request
-//this sort of goes againt the reason why we use JWT that is stateless authentication) 
-
-var rmq_connection = null
-var pub_channel = null
-var offlinePubQueue = []
 
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 app.use(cors())
 
 const PORT = 27327 || process.env.PORT
-
-function connectToRMQ() {
-  amqp.connect(config.RMQ_URL, function(err, con) {
-    if (err) {
-      console.error("RMQ Error:- " + err.message)
-      return setTimeout(connectToRMQ, 1000)
-    }
-    con.on("error", function(err) {
-      if (err.message != "Connection closing") {
-        console.error("RMQ Error:- " + err.message)
-        throw err
-      }
-    })
-    con.on("close", function(err) {
-      console.error("RMQ Error:- " + err.message)
-      console.info("Retrying...")
-      return setTimeout(connectToRMQ(), 1000)
-    })
-    console.log("RMQ connected")
-    rmq_connection = con
-    startPublisher()
-  })
-}
-
-function startPublisher() {
-  rmq_connection.createConfirmChannel(function(err, ch) {
-    if (err) {
-      console.error("RMQ Error:- " + err.message)
-      return
-    }
-    ch.on("error", function(err) {
-      console.error("RMQ Error:- " + err.message)
-      return
-    })
-    ch.on("close", function(err) {
-      console.error("RMQ Error:- " + err)
-      return
-    })
-    pub_channel = ch
-    console.log("Publisher started")
-    if (offlinePubQueue != null) {
-      for (var i = 0; i < offlinePubQueue.length; i++) {
-        publish(offlinePubQueue[i].queueName, offlinePubQueue[i].content)
-      }
-    }
-    offlinePubQueue = []
-  })
-}
-
-function publish(queueName, content) {
-  if (pub_channel != null) {
-    try {
-      pub_channel.assertQueue(queueName, { durable: false })
-      pub_channel.sendToQueue(queueName, new Buffer(content))
-      console.log("Message published to RMQ")
-    }
-    catch (exception) {
-      console.error("Publisher Exception:- " + exception.message)
-      offlinePubQueue.push({
-        content: content,
-        queueName: queueName
-      })
-    }
-  }
-}
 
 function generatePasswordHash(password, salt) {
   var passSalt = salt
@@ -117,7 +43,7 @@ function generateRefreshToken(id) {
     userId: id,
     exp: config.REFRESH_JWT_EXP
   })
-  mongo.saveRefreshToken(refreshToken).then(function(tokenSaved) {
+  mongo.saveRefreshToken(id, refreshToken).then(function(tokenSaved) {
     if (tokenSaved) {
       deferred.resolve({
         status: 200,
@@ -174,6 +100,30 @@ function delChildLevelDB(data) {
       deferred.reject(err)
     }
     deferred.resolve(true)
+  })
+  return deferred.promise
+}
+
+function clearAuthTokens(userId, clearRefreshTokens) {
+  var deferred = q.defer()
+  getLevelDBObj(userId).then(function(tokens) {
+    delChildLevelDB(tokens).then(function(response) {
+      if (clearRefreshTokens) {
+        mongo.deleteManyRefreshToken(userId).then(function(response) {
+          if (response) {
+            deferred.resolve(true)
+          } else {
+            deferred.resolve(false)
+          }
+        }).fail(function(err) {
+          deferred.reject(err)
+        })
+      }
+    }).fail(function(err) {
+      deferred.reject(err)
+    })
+  }).fail(function(err) {
+    deferred.reject(err)
   })
   return deferred.promise
 }
@@ -288,7 +238,7 @@ app.get("/accesstoken/:token", function(req, res) {
           maxAge: config.REFRESH_JWT_EXP,
           clockTimestamp: new Date().getTime() / 1000
         }, function(err, payload) {
-          mongo.deleteRefreshToken(response.refreshToken).then(function(isDeleted) {
+          mongo.deleteOneRefreshToken(response.refreshToken).then(function(isDeleted) {
             if (isDeleted) {
               if (err) {
                 if (err.name == "TokenExpiredError") {
@@ -332,20 +282,6 @@ app.get("/accesstoken/:token", function(req, res) {
   })
 })
 
-function clearAuthTokens(userId, clearRefreshTokens) {
-  var deferred = q.defer()
-  getLevelDBObj(userId).then(function(tokens) {
-    delChildLevelDB(tokens).then(function(response) {
-      deferred.resolve(true)
-    }).fail(function(err) {
-      deferred.reject(err)
-    })
-  }).fail(function(err) {
-    deferred.reject(err)
-  })
-  return deferred.promise
-}
-
 app.post("/password/change", function(req, res) {
   mongo.getAuthCredentials(req.body.userId).then(function(response) {
     if (response.status == 200) {
@@ -355,7 +291,7 @@ app.post("/password/change", function(req, res) {
           passwordHashObj.passwordHashPromise.then(function(newPasswordHash) {
             mongo.updateAuthCredentials(req.body.userId, newPasswordHash, passwordHashObj.salt).then(function(response) {
               if (response.status == 200) {
-                clearAuthTokens(req.body.userId, false).then(function(isSuccessfull) {
+                clearAuthTokens(req.body.userId, false).then(function(isSuccessful) {
                   const newAccessToken = generateJWT({
                     userId: response.credentials.id,
                     exp: config.JWT_EXP
