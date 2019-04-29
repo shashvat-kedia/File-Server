@@ -101,7 +101,10 @@ function generatePasswordHash(password, salt) {
       console.error(err)
     })
   }
-  return bcrypt.hash(password, passSalt)
+  return {
+    passwordHashPromise: bcrypt.hash(password, passSalt),
+    salt: salt
+  }
 }
 
 function generateJWT(payload) {
@@ -136,17 +139,6 @@ function isValid(username, password) {
   return true
 }
 
-function getLevelDBObject(key) {
-  const deferred = q.defer()
-  grpcClient.get(key, function(err, object) {
-    if (err) {
-      deferred.reject(err)
-    }
-    deferred.resolve(object.content.jwt)
-  })
-  return deferred.promise
-}
-
 function putLevelDbObject(key, val) {
   const deferred = q.defer()
   grpcClient.put({
@@ -174,29 +166,23 @@ function delLevelDbObject(key) {
 
 app.post("/signup", function(req, res) {
   if (isValid(req.body.username, req.body.password)) {
-    generatePasswordHash(req.body.password, null).then(function(passwordHash) {
+    var passwordHashObj = generatePasswordHash(req.body.password, null)
+    passwordHashObj.passwordHashPromise.then(function(passwordHash) {
       mongo.insertAuthCredentials({
         username: req.body.username,
-        salt: salt,
+        salt: passwordHashObj.salt,
         passwordHash: passwordHash
       }).then(function(response) {
         if (response.status == 200) {
           generateRefreshToken(response.id).then(function(result) {
             if (result.status == 200) {
-              const accessToken = generateJWT({
-                userId: response.id,
-                exp: config.JWT_EXP
-              })
-              putLevelDbObject(response.id + ":" + accessToken, accessToken).then(function(isSuccessfull) {
-                if (isSuccessfull) {
-                  res.status(200).json({
-                    accessToken: accessToken,
-                    refreshToken: result.refreshToken,
-                    tokenType: "JWT"
-                  })
-                }
-              }).fail(function(err) {
-                console.error(ReferenceError)
+              res.status(200).json({
+                accessToken: generateJWT({
+                  userId: response.id,
+                  exp: config.JWT_EXP
+                }),
+                refreshToken: result.refreshToken,
+                tokenType: "JWT"
               })
             } else {
               res.status(result.status).json({
@@ -229,20 +215,13 @@ app.post("/login", function(req, res) {
             console.log(response.credentials.id)
             generateRefreshToken(response.credentials.id).then(function(result) {
               if (result.status == 200) {
-                const accessToken = generateJWT({
-                  userId: response.credentials.id,
-                  exp: config.JWT_EXP
-                })
-                putLevelDbObject(response.id + ":" + accessToken, accessToken).then(function(isSuccessfull) {
-                  if (isSuccessfull) {
-                    res.status(200).json({
-                      accessToken: accessToken,
-                      refreshToken: result.refreshToken,
-                      tokenType: "JWT"
-                    })
-                  }
-                }).fail(function(err) {
-                  console.error(ReferenceError)
+                res.status(200).json({
+                  accessToken: generateJWT({
+                    userId: response.credentials.id,
+                    exp: config.JWT_EXP
+                  }),
+                  refreshToken: result.refreshToken,
+                  tokenType: "JWT"
                 })
               } else {
                 res.status(result.status).json({
@@ -330,14 +309,24 @@ function clearAuthTokens(userId) {
 app.post("/password/change", function(req, res) {
   mongo.getAuthCredentials(req.body.userId).then(function(response) {
     if (response.status == 200) {
-      generatePasswordHash(req.body.password, response.credentials.salt).then(function(passwordHash) {
+      generatePasswordHash(req.body.password, response.credentials.salt).passwordHashPromise.then(function(passwordHash) {
         if (response.credentials.passwordHash == passwordHash) {
-          generatePasswordHash(req.body.newPassword, null).then(function(newPasswordHash) {
-            mongo.updateAuthCredentials(req.body.userId, newPasswordHash, newSalt).then(function(response) {
+          var passwordHashObj = generatePasswordHash(req.body.newPassword, null)
+          passwordHashObj.passwordHashPromise.then(function(newPasswordHash) {
+            mongo.updateAuthCredentials(req.body.userId, newPasswordHash, passwordHashObj.salt).then(function(response) {
               if (response.status == 200) {
-                clearAuthTokens(req.body.userId)
-                res.status(200).json({
-                  message: "Password updated"
+                putLevelDbObject(req.body.userId + ":" + accessToken, accessToken).then(function(response) {
+                  clearAuthTokens(req.body.userId)
+                  res.status(200).json({
+                    message: "Password updated",
+                    accessToken: generateJWT({
+                      userId: response.credentials.id,
+                      exp: config.JWT_EXP
+                    }),
+                    tokenType: "JWT"
+                  })
+                }).fail(function(err) {
+                  console.error(err)
                 })
               } else {
                 res.status(response.status).json({

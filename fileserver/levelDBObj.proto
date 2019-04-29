@@ -2,11 +2,13 @@ syntax = "proto3";
 
 message LevelDBObject{
   string key = 1;
-  string content = 2;
+  repeated string content = 2;
 }
 
 service LevelDBService{
   rpc get (string) returns (LevelDBObject){}
-  rpc put (LevelDbObject) returns (bool){}
-  rpc del (string) returns (bool){}
+  rpc put (LevelDBObject) returns (bool){}
+  rpc putChild (LevelDBObject) returns (bool){}
+  rpc del (LevelDBObject) returns (bool){}
+  rpc delChild (LevelDBObject) returns (bool){}
 }
