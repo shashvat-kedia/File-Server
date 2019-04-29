@@ -18,7 +18,7 @@ function get(key, callback) {
     }
     callback(null, {
       key: key,
-      jwt: JSON.parse(value).content
+      jwt: JSON.parse(value)
     })
   })
 }

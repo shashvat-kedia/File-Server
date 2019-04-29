@@ -65,7 +65,7 @@ function isValid(username, password) {
   return true
 }
 
-function getLevelDBObj(key) {
+function getLevelDBObjet(key) {
   const deferred = q.defer()
   grpcClient.get(key, function(err, value) {
     if (err) {
@@ -106,7 +106,7 @@ function delChildLevelDB(data) {
 
 function clearAuthTokens(userId, clearRefreshTokens) {
   var deferred = q.defer()
-  getLevelDBObj(userId).then(function(tokens) {
+  getLevelDBObjet(userId).then(function(tokens) {
     delChildLevelDB(tokens).then(function(response) {
       if (clearRefreshTokens) {
         mongo.deleteManyRefreshToken(userId).then(function(response) {
@@ -193,15 +193,15 @@ app.post("/login", function(req, res) {
                 })
                 putChild({
                   key: response.credentials.id,
-                  content: [accessToken].then(function(response) {
-                    res.status(200).json({
-                      accessToken: accessToken,
-                      refreshToken: result.refreshToken,
-                      tokenType: "JWT"
-                    })
-                  }).fail(function(err) {
-                    consol.error(err)
+                  content: [accessToken]
+                }).then(function(response) {
+                  res.status(200).json({
+                    accessToken: accessToken,
+                    refreshToken: result.refreshToken,
+                    tokenType: "JWT"
                   })
+                }).fail(function(err) {
+                  consol.error(err)
                 })
               } else {
                 res.status(result.status).json({

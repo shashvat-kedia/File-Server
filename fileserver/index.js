@@ -296,18 +296,21 @@ function uploadFileFilter(req, file, callback) {
 
 function getLevelDBObject(key) {
   const deferred = q.defer()
-  grpcClient.get(key, function(err, object) {
+  grpcClient.get(key, function(err, value) {
     if (err) {
       deferred.reject(err)
     }
-    deferred.resolve(object.content.jwt)
+    deferred.resolve(value)
   })
   return deferred.promise
 }
 
-function delLevelDbObject(key) {
+function delChildLevelDB(data) {
   const deferred = q.defer()
-  grpcClient.del(key, function(err, val) {
+  grpcClient.delChild({
+    key: data.key,
+    val: data.val
+  }, function(err, val) {
     if (err) {
       deferred.reject(err)
     }
@@ -323,8 +326,14 @@ app.use("*", function(req, res, next) {
       var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
         authorizationHeader.length).trim()
       var decoded = jwt.decode(accessToken)
-      getLevelDBObject(decoded.payload.userId + ":" + accessToken).then(function(levelDBObject) {
-        if (levelDBObject == null) {
+      getLevelDBObject(decoded.payload.userId).then(function(levelDBObject) {
+        var i = 0
+        for (i = 0; i < levelDBObject.content.length; i++) {
+          if (levelDBObject.content[i] == accessToken) {
+            break
+          }
+        }
+        if (i != levelDBObject.content.length) {
           jwt.verify(accessToken,
             config.PRIVATE_KEY, {
               maxAge: config.JWT_EXP,
@@ -344,7 +353,10 @@ app.use("*", function(req, res, next) {
                     message: "Invalid Access token"
                   })
                 }
-                delLevelDbObject(payload.userId + ":" + accessToken).then(function(isSuccessful) {
+                delChildLevelDB({
+                  key: payload.userId,
+                  content: [accessToken]
+                }).then(function(isSuccessful) {
                   if (isSuccessful) {
                     console.log("Invalid token removed from blacklist")
                   }
