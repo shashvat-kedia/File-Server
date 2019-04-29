@@ -55,6 +55,9 @@ server.addService(levelDBObjProto.LevelDBService.service, {
         return console.error(err)
       }
       value = JSON.paarse(value)
+      if (value.content == null) {
+        value.content = []
+      }
       for (var i = 0; i < data.content.length; i++) {
         value.content.push(data.content[i])
       }
@@ -89,6 +92,3 @@ server.addService(levelDBObjProto.LevelDBService.service, {
     })
   }
 })
-
-
-
