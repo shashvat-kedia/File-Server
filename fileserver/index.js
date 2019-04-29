@@ -12,6 +12,9 @@ const randomAccessFile = require('random-access-file');
 const mime = require('mime-types');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
+const grpc = require('grpc');
+const LevelDBService = grpc.load(config.LEVEL_DB_OBJ_PROTO_PATH).LevelDBService;
+const grpcClient = new LevelDBService(config.HOST_NAME + ":" + config.LEVEL_DB_GRPC_PORT, grpc.credentials.createInsecure());
 const app = express();
 
 var rmq_connection = null
@@ -289,6 +292,31 @@ function uploadFileFilter(req, file, callback) {
   } else {
     callback(null, true)
   }
+}
+
+function getLevelDBObject(key) {
+  const deferred = q.defer()
+  grpcClient.get(key, function(err, object) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(object.content.jwt)
+  })
+  return deferred.promise
+}
+
+function putLevelDbObject(key, val) {
+  const deferred = q.defer()
+  grpcClient.put({
+    key: key,
+    content: { jwt: val }
+  }, function(err, val) {
+    if (err) {
+      deferred.reject(err)
+    }
+    deferred.resolve(true)
+  })
+  return deferred.promise
 }
 
 app.use("*", function(req, res, next) {
