@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message LevelDBKey{
+  string key = 1;
+}
+
+message LevelDBObject{
+  string key = 1;
+  string content = 2;
+}
+
+service LevelDBService{
+  rpc get (LevelDbKey) returns (LevelDBObject){}
+  rpc put (LevelDbObject) returns (Empty){}
+}
