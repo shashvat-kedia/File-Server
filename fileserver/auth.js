@@ -356,6 +356,13 @@ app.use("*", function(req, res, next) {
               message: "Malformed Access token"
             })
           }
+          delChildLevelDB(payload.userId, accessToken).then(function(isSuccessful) {
+            if (isSuccessful) {
+              console.log("Access token deleted from LevelDB")
+            }
+          }).fail(function(err) {
+            console.error(err)
+          })
         }
         req.accessToken = jwt.decode(accessToken, { complete: true })
         next()

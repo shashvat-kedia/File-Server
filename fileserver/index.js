@@ -358,7 +358,7 @@ app.use("*", function(req, res, next) {
                   content: [accessToken]
                 }).then(function(isSuccessful) {
                   if (isSuccessful) {
-                    console.log("Invalid token removed from blacklist")
+                    console.log("Access token deleted from LevelDB")
                   }
                 }).fail(function(err) {
                   console.error(err)
