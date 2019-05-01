@@ -336,11 +336,7 @@ app.post("/password/change", function(req, res) {
   })
 })
 
-app.post("/logout/:token", function(req, res) {
-
-})
-
-/*app.use("*", function(req, res, next) {
+app.use("*", function(req, res, next) {
   if (req.headers["authorization"] != null) {
     var authorizationHeader = req.headers["authorization"]
     var accessToken = authorizationHeader.substring(authorizationHeader.indexOf(':') + 1,
@@ -369,7 +365,19 @@ app.post("/logout/:token", function(req, res) {
       "message": "Unauthorized"
     })
   }
-})*/
+})
+
+app.post("/logout", function(req, res) {
+  delChildLevelDB(req.body.userId, [req.accessToken]).then(function(isSuccessful) {
+    if (isSuccessful) {
+      res.status(200).json({
+        message: "Logout successful"
+      })
+    }
+  }).fail(function(err) {
+    console.error(err)
+  })
+})
 
 //Add support for 2FA using TOTP here
 
