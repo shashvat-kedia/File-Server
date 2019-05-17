@@ -369,7 +369,7 @@ app.use("*", function(req, res, next) {
             })
         } else {
           res.status(403).json({
-            message: "Expired Access token"
+            message: "Blacklisted Access token"
           })
         }
       }).fail(function(err) {

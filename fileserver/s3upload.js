@@ -137,7 +137,12 @@ function consume() {
           }
         }).fail(function(err) {
           console.error(err)
+          //Shuttng down the process for now
+          //Messages requeued by default
           con_channel.nack(message)
+          con_channel.close()
+          pub_channel.close()
+          server.close()
         })
       }
     })
@@ -402,7 +407,7 @@ function updateFile(message, jsonMessage) {
   })
 }
 
-app.listen(PORT, function() {
+const server = app.listen(PORT, function() {
   connectToRMQ()
   console.log("Consumer service listening on :- " + PORT)
 })
