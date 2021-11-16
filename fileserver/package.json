@@ -10,7 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "amqplib": "^0.5.3",
-    "aws-sdk": "^2.417.0",
+    "aws-sdk": "^2.814.0",
     "bcrypt": "^3.0.6",
     "body-parser": "^1.18.3",
     "cors": "^2.8.5",
